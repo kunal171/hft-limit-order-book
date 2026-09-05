@@ -424,6 +424,16 @@ Detailed roadmap:
 docs/HFT_ROADMAP.md
 ```
 
+Postgres, users, instruments, and stock/crypto reference pricing are planned as
+a separate persistence and market-data phase. They will store durable history
+and analytics data without putting database calls inside matching.
+
+Database and pricing roadmap:
+
+```text
+docs/POSTGRES_MARKET_DATA_ROADMAP.md
+```
+
 ## Windmill Usage
 
 The current Windmill integration runs the Rust engine as an external job. The
@@ -547,6 +557,7 @@ Phase 8: Benchmarks
 Phase 9: Windmill orchestration
 Phase 10: AI/LangChain/LangGraph analysis foundation paused
 Phase 11: HFT-style systems and optimization
+Phase 12: Postgres persistence, users, instruments, and pricing
 ```
 
 Next focus:
@@ -560,6 +571,7 @@ Detailed roadmap:
 ```text
 docs/ROADMAP.md
 docs/HFT_ROADMAP.md
+docs/POSTGRES_MARKET_DATA_ROADMAP.md
 ```
 
 ## Long-Term Direction
@@ -573,6 +585,7 @@ Rust matching engine
 -> synthetic workloads
 -> benchmark reports
 -> HFT-style optimization experiments
+-> Postgres persistence, users, instruments, and reference pricing
 -> Windmill scheduled runs and dashboards
 -> AI scenario analysis and LangGraph research workflows
 ```

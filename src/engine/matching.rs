@@ -1,4 +1,4 @@
-use crate::domain::{Order, Price, Side, Trade};
+use crate::domain::{Order, Price, Trade};
 
 use super::order_book::OrderBook;
 
@@ -23,11 +23,7 @@ impl OrderBook {
         // Any unfilled quantity becomes a resting bid.
         if !incoming.is_filled() {
             // Only resting orders belong in the active-order index.
-            self.order_sides.insert(incoming.id, Side::Buy);
-            self.bids
-                .entry(incoming.price)
-                .or_default()
-                .push_back(incoming);
+            self.rest_order(incoming);
         }
 
         trades
@@ -53,11 +49,7 @@ impl OrderBook {
         // Any unfilled quantity becomes a resting ask.
         if !incoming.is_filled() {
             // Only resting orders belong in the active-order index.
-            self.order_sides.insert(incoming.id, Side::Sell);
-            self.asks
-                .entry(incoming.price)
-                .or_default()
-                .push_back(incoming);
+            self.rest_order(incoming);
         }
 
         trades
@@ -69,27 +61,34 @@ impl OrderBook {
 
         if let Some(level) = self.asks.get_mut(&price) {
             while !incoming.is_filled() {
-                let Some(mut resting) = level.pop_front() else {
+                let Some(resting_id) = level.order_ids.pop_front() else {
                     break;
+                };
+
+                let Some(mut resting) = self.orders.remove(&resting_id) else {
+                    continue; // stale cancelled id
                 };
 
                 let traded_qty = incoming.remaining_qty.min(resting.remaining_qty);
                 incoming.remaining_qty -= traded_qty;
                 resting.remaining_qty -= traded_qty;
 
+                level.total_quantity -= traded_qty;
+
                 trades.push(Trade::new(resting.id, incoming.id, price, traded_qty));
 
                 // A fully filled resting order must leave the active-order index.
                 // A partially filled resting order keeps its FIFO position.
                 if resting.is_filled() {
-                    self.order_sides.remove(&resting.id);
+                    self.order_locations.remove(&resting.id);
                 } else {
-                    level.push_front(resting);
+                    self.orders.insert(resting.id, resting);
+                    level.order_ids.push_front(resting_id);
                     break;
                 }
             }
 
-            should_remove_level = level.is_empty();
+            should_remove_level = level.order_ids.is_empty() || level.total_quantity == 0;
         }
 
         if should_remove_level {
@@ -103,27 +102,34 @@ impl OrderBook {
 
         if let Some(level) = self.bids.get_mut(&price) {
             while !incoming.is_filled() {
-                let Some(mut resting) = level.pop_front() else {
+                let Some(resting_id) = level.order_ids.pop_front() else {
                     break;
                 };
 
+                let Some(mut resting) = self.orders.remove(&resting_id) else {
+                    continue; // stale cancelled id
+                };
                 let traded_qty = incoming.remaining_qty.min(resting.remaining_qty);
                 incoming.remaining_qty -= traded_qty;
                 resting.remaining_qty -= traded_qty;
+
+                //update total quantity
+                level.total_quantity -= traded_qty;
 
                 trades.push(Trade::new(resting.id, incoming.id, price, traded_qty));
 
                 // A fully filled resting order must leave the active-order index.
                 // A partially filled resting order keeps its FIFO position.
                 if resting.is_filled() {
-                    self.order_sides.remove(&resting.id);
+                    self.order_locations.remove(&resting.id);
                 } else {
-                    level.push_front(resting);
+                    self.orders.insert(resting.id, resting);
+                    level.order_ids.push_front(resting_id);
                     break;
                 }
             }
 
-            should_remove_level = level.is_empty();
+            should_remove_level = level.order_ids.is_empty() || level.total_quantity == 0;
         }
 
         if should_remove_level {

@@ -41,6 +41,7 @@ database writes
 debug logs
 dashboard updates
 slow network calls
+reference/oracle price fetches
 ```
 
 ## Current Baseline
@@ -605,6 +606,26 @@ FIX-like gateway
 multi-symbol sharding
 risk engine
 paper-trading simulator
+Postgres run history
+stock/crypto reference price ingestion
+```
+
+## After HFT: Postgres And Market Data
+
+After the hot path is cleaner, add Postgres and reference/oracle pricing as the
+next major product/backend phase.
+
+Why after HFT cleanup:
+
+```text
+The database layer should persist and analyze engine output, not shape the core
+matching design.
+```
+
+Next detailed roadmap:
+
+```text
+docs/POSTGRES_MARKET_DATA_ROADMAP.md
 ```
 
 ## What To Build First

@@ -68,6 +68,7 @@ phase-08-langgraph-agent
 phase-09-windmill-integration
 phase-10-ai-analysis-foundation
 phase-11-hft-systems
+phase-12-postgres-market-data
 ```
 
 ## Current Starting Point
@@ -794,6 +795,61 @@ Detailed HFT roadmap:
 docs/HFT_ROADMAP.md
 ```
 
+## Phase 12: Postgres, Users, Instruments, And Pricing
+
+Branch:
+
+```text
+phase-12-postgres-market-data
+```
+
+Goal:
+
+```text
+persist completed runs and add product-level trading concepts
+```
+
+Scope:
+
+```text
+Postgres connection with sqlx
+users and accounts
+instruments such as BTC-USDT, ETH-USD, AAPL-USD
+simulation runs
+orders and trades
+book snapshots
+run metrics
+reference/oracle prices
+recent-run queries for dashboards
+```
+
+Important rule:
+
+```text
+Postgres is outside the matching hot path.
+```
+
+Reference/oracle price rule:
+
+```text
+Oracle prices are used for risk checks, mark price, slippage analysis, and
+analytics. They do not override price-time matching.
+```
+
+Why it matters:
+
+```text
+This turns the project from only a matching engine into a backend trading
+system with durable history, user ownership, instruments, market pricing, and
+queryable analytics.
+```
+
+Detailed database roadmap:
+
+```text
+docs/POSTGRES_MARKET_DATA_ROADMAP.md
+```
+
 ## Phase Merge Checklist
 
 Before merging any phase branch:
@@ -822,6 +878,7 @@ phase 08: add LangGraph experiment workflow
 phase 09: add Windmill orchestration
 phase 10: pause AI foundation and document resume plan
 phase 11: add HFT-style systems improvements
+phase 12: add Postgres market data persistence
 ```
 
 ## Learning Rule For This Project
