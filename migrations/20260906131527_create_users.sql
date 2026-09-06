@@ -3,7 +3,6 @@
 CREATE TABLE users(
     id UUID PRIMARY KEY,
 
-    -- Optional because some system/API users may not have email.
     display_name TEXT NOT NULL,
 
     -- Optional because some system/API users may not have email.
