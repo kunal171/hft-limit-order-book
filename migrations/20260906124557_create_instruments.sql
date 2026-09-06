@@ -26,7 +26,7 @@ CREATE TABLE instruments (
     symbol TEXT NOT NULL UNIQUE,
 
     -- Example: crypto, stock, futures, etc.
-    class asset_class NOT NULL,
+    asset_class asset_class NOT NULL,
 
     -- Example: BTC in BTC-USDT.
     base_asset TEXT NOT NULL,
