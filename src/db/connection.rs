@@ -1,4 +1,4 @@
-use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
+use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
 use std::time::Duration;
 
 pub async fn connect_db() -> Result<Pool<Postgres>, sqlx::Error> {
