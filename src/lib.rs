@@ -9,6 +9,7 @@ pub mod error;
 pub mod metrics;
 pub mod replay;
 pub mod simulator;
+pub mod db;
 
 pub use domain::{BookEvent, BookSnapshot, Order, OrderId, Price, Quantity, Side, Trade};
 pub use engine::{EventMode, OrderBook, OrderBookConfig};
