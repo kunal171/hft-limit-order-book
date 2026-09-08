@@ -1,13 +1,10 @@
-use core::error;
-
 use crate::api::state::AppState;
 use axum::{
     Json,
     extract::State,
-    http::{StatusCode, request},
+    http::{StatusCode},
 };
 use serde::{Deserialize, Serialize};
-use tracing_subscriber::field::display;
 use uuid::Uuid;
 
 /// Allowed roles in the users table.
