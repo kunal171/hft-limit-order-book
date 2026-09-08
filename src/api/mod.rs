@@ -10,5 +10,6 @@ pub mod state;
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health::health))
+        .nest("/admin", admin::router())
         .with_state(state)
 }
