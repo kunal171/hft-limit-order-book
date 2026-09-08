@@ -2,6 +2,7 @@ use axum::{Router, routing::get};
 
 use self::state::AppState;
 
+mod admin;
 mod health;
 pub mod state;
 
