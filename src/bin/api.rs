@@ -13,8 +13,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_env_filter("limit_order_book=debug,tower_http=debug")
         .init();
 
+    // Refuse to start without an explicitly configured admin key.
+    let admin_api_key = std::env::var("ADMIN_API_KEY")?;
     let db = connect_db().await?;
-    let state = AppState::new(db);
+    let state = AppState::new(db, admin_api_key);
 
     let app = router(state).layer(TraceLayer::new_for_http());
 
