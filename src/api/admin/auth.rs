@@ -1,7 +1,7 @@
 use crate::api::{error::ApiError, state::AppState};
 use axum::{
     extract::{Request, State},
-    http::{StatusCode, request},
+    http::StatusCode,
     middleware::Next,
     response::Response,
 };
