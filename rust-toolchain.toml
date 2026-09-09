@@ -1,0 +1,9 @@
+[toolchain]
+# Pin the compiler so local development and CI use the same Rust version.
+channel = "1.97.1"
+
+# Install the formatter and linter with the toolchain.
+components = ["rustfmt", "clippy"]
+
+# Install only the essential toolchain components.
+profile = "minimal"
