@@ -1,7 +1,6 @@
 use sqlx::PgPool;
 use std::sync::Arc;
 
-
 /// Dependencies shared by API handlers and middleware.
 #[derive(Clone)]
 pub struct AppState {
