@@ -2,7 +2,7 @@
 name = "limit_order_book"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.97"
+rust-version = "1.98.1"
 
 [dependencies]
 axum = "0.8.9"
