@@ -1,9 +1,5 @@
 use crate::api::{error::ApiError, state::AppState};
-use axum::{
-    Json,
-    extract::State,
-    http::{StatusCode},
-};
+use axum::{Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -91,11 +87,9 @@ pub async fn create_user(
                 role,
             }),
         )),
-        Err(sqlx::Error::Database(error)) if error.code().as_deref() == Some("23505") => 
-        Err(ApiError::new(
-            StatusCode::CONFLICT,
-            "email already exists",
-        )),
+        Err(sqlx::Error::Database(error)) if error.code().as_deref() == Some("23505") => {
+            Err(ApiError::new(StatusCode::CONFLICT, "email already exists"))
+        }
         Err(error) => {
             tracing::error!(%error, "failed to create user");
 

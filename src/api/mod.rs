@@ -3,9 +3,9 @@ use axum::{Router, routing::get};
 use self::state::AppState;
 
 mod admin;
+pub mod error;
 mod health;
 pub mod state;
-pub mod error;
 
 /// Builds the complete HTTP router.
 pub fn router(state: AppState) -> Router {
