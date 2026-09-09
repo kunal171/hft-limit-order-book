@@ -10,8 +10,14 @@ Postgres is for persistence, analytics, dashboards, replay, and audit.
 Postgres is not used for every matching decision in the hot path.
 ```
 
-The matching engine should stay in memory. After an order is processed, the
-system can persist commands, trades, snapshots, metrics, and run metadata.
+For the full runtime boundary, acknowledgement policy, Kafka flow, and recovery
+model, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
+The matching engine stays in memory. PostgreSQL is not the authoritative live
+book and must not be the first or only durable destination for acknowledged
+orders. Canonical commands/events first enter the configured journal or
+replicated-log durability boundary; asynchronous consumers then build
+PostgreSQL projections.
 
 ## Why Add Postgres
 
@@ -40,6 +46,7 @@ best ask lookup
 price-time matching
 cancel/modify hot-path lookup
 per-order synchronous logging in low-latency mode
+recovering acknowledged work that was never durably journaled
 ```
 
 Why:
@@ -351,6 +358,7 @@ CREATE TABLE orders (
     original_quantity BIGINT NOT NULL,
     remaining_quantity BIGINT NOT NULL,
     status TEXT NOT NULL,
+    shard_id INTEGER NOT NULL,
     sequence_number BIGINT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -361,6 +369,7 @@ Useful index:
 ```sql
 CREATE INDEX orders_run_sequence_idx ON orders (run_id, sequence_number);
 CREATE INDEX orders_account_created_idx ON orders (account_id, created_at);
+CREATE UNIQUE INDEX orders_shard_sequence_idx ON orders (shard_id, sequence_number);
 ```
 
 Why:
@@ -389,6 +398,7 @@ CREATE TABLE trades (
     taker_order_id BIGINT NOT NULL,
     price_ticks BIGINT NOT NULL,
     quantity BIGINT NOT NULL,
+    shard_id INTEGER NOT NULL,
     sequence_number BIGINT NOT NULL,
     executed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -399,6 +409,7 @@ Useful index:
 ```sql
 CREATE INDEX trades_run_sequence_idx ON trades (run_id, sequence_number);
 CREATE INDEX trades_instrument_time_idx ON trades (instrument_id, executed_at);
+CREATE UNIQUE INDEX trades_shard_sequence_idx ON trades (shard_id, sequence_number);
 ```
 
 Why:
@@ -547,6 +558,51 @@ engine -> no database knowledge
 persistence -> knows how to store engine output
 ```
 
+## Kafka Projection Pattern
+
+Kafka is introduced only after the durable journal exists:
+
+```text
+matching engine -> journal -> asynchronous Kafka publisher -> consumers
+```
+
+Kafka events are partitioned by authoritative engine shard because ordering is
+defined per partition. Each consumer transaction records a unique
+`(shard_id, sequence_number)` before updating its projection. The Kafka offset
+is committed after the database transaction commits.
+
+This provides at-least-once delivery with idempotent database effects. It does
+not pretend that Kafka and PostgreSQL form one automatic exactly-once
+transaction.
+
+Backpressure rule:
+
+```text
+canonical event publication resumes from the journal and is never dropped
+derived metrics and AI features may be regenerated from canonical events
+```
+
+## pgvector Analytics Later
+
+pgvector belongs to the research path, not order acceptance, risk, or matching.
+Generate one feature vector per configured market-state window rather than one
+embedding per order.
+
+Store at least:
+
+```text
+instrument_id
+window_start and window_end
+first and last engine sequence
+feature_version
+normalization_version
+feature vector
+```
+
+Start with exact nearest-neighbor search. Add an approximate HNSW index only
+after data volume and measured recall/latency justify its memory and indexing
+cost. Keep raw events so every vector can be reproduced after feature changes.
+
 ## Oracle/Reference Price Interface
 
 Start with a trait before picking a provider:
@@ -599,16 +655,16 @@ Recommended order:
 ```text
 1. Add docs and schema design.
 2. Add sqlx + Postgres connection.
-3. Add migrations for instruments and runs.
-4. Persist run summary after simulation completes.
-5. Persist trades for a run.
-6. Add users and accounts.
-7. Attach orders/trades to user/account.
-8. Add reference_prices table.
-9. Add fake oracle provider for tests.
-10. Add real provider integration later.
-11. Add Windmill dashboard queries.
-12. Let AI read Postgres run history later.
+3. Finish users, accounts, instruments, roles, and admin authorization.
+4. Expose validated control-plane configuration to gateways/risk snapshots.
+5. Build the sequenced single-writer engine runtime.
+6. Add durable journal and snapshot recovery.
+7. Publish journaled events to Kafka asynchronously.
+8. Build idempotent order/trade PostgreSQL projections.
+9. Add reference_prices and a fake provider for tests.
+10. Add real provider integration outside matching.
+11. Add run history, Windmill dashboard queries, and operational metrics.
+12. Add versioned market-state windows and pgvector analysis later.
 ```
 
 Why this order:

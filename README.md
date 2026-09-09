@@ -1,8 +1,14 @@
-# Limit Order Book
+# HFT-Style Limit Order Book
 
-A deterministic Rust matching engine and market-systems lab focused on
-price-time priority, replayable state, measurable low-latency behavior, and a
-PostgreSQL-backed trading API.
+A Rust HFT-style limit order book and market-systems lab focused on deterministic
+price-time matching, measurable tail latency, replayable state, and a
+PostgreSQL-backed trading control plane.
+
+The project is being built as an HFT systems exercise, not presented as
+production-ready exchange infrastructure. Its central approach is a
+single-writer matching engine that owns the live order book in memory, with
+networking, databases, Kafka, AI, and orchestration kept outside the matching
+hot path.
 
 The matching engine stays in memory and keeps database and workflow operations
 outside its hot path. Around that core, the project provides simulation,
@@ -15,8 +21,9 @@ and durable market data.
 Current phase:
 
 ```text
-Phase 11: HFT-style engine work complete
-Phase 12: PostgreSQL persistence and trading API in progress
+Phase 11: measured in-memory engine and hot-path data-structure work complete
+Phase 12: PostgreSQL control plane and trading API in progress
+Next: command sequencing, single-writer runtime, and durable journal
 ```
 
 Windmill orchestration is operational. The deterministic AI analysis foundation
@@ -69,26 +76,47 @@ Axum API binary with tracing
 database-aware health endpoint
 ```
 
-## Core Idea
+## HFT Approach
 
 The matching engine follows this flow:
 
 ```text
 incoming order
--> validate
+-> gateway decode and pre-trade validation
+-> ordered command
 -> match against the opposite side
 -> emit trades
 -> rest any leftover quantity
--> record events
+-> emit a sequenced execution result
 ```
 
-AI, Windmill, databases, dashboards, and reports stay outside the matching hot
-path. They are useful for orchestration and analysis, but the core book should
-remain deterministic and easy to replay.
+The active book is held in Rust-owned `BTreeMap`, `HashMap`, and `VecDeque`
+collections in process memory. A dedicated single-writer thread will own each
+book shard, avoiding a shared `Arc<Mutex<OrderBook>>` design.
 
-The current active direction is HFT-style systems work. AI integration is paused
-until the matching engine has stronger performance baselines and cleaner
-hot-path boundaries.
+RAM provides fast live state but not crash recovery. The target durability
+model is an append-only sequenced journal plus periodic snapshots. Kafka then
+publishes journaled events asynchronously to PostgreSQL projections, metrics,
+and later pgvector feature analysis.
+
+```text
+gateway -> bounded queue -> single-writer engine -> in-memory book
+                                              -> durable journal
+                                              -> execution response
+
+journal -> Kafka -> PostgreSQL / metrics / pgvector / research
+```
+
+Canonical orders and executions are never silently dropped. Derived metrics and
+AI features may be recomputed from the journal. All queues are bounded so
+overload becomes an explicit rejection or safety halt instead of uncontrolled
+memory growth.
+
+The complete current and target design is documented in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+AI integration remains paused until command sequencing, the single-writer
+runtime, durability, and hot-path latency measurements are in place.
 
 ## Architecture
 
@@ -462,18 +490,18 @@ docs/AI_WORK_PAUSE.md
 The next work is focused on making the engine a stronger low-latency systems
 project.
 
-Main priorities:
+Next priorities:
 
 ```text
-record benchmark baselines
-separate the matching hot path from optional event logging
-make event storage configurable and bounded
-improve cancel/modify indexes
-measure latency percentiles
-reduce allocations and cloning
-compare BTreeMap with alternate price-ladder designs
-add single-writer command processing
-keep AI/Windmill outside the hot path
+finish the PostgreSQL control plane without coupling it to matching
+define compact engine commands, events, and monotonic sequences
+run each order-book shard through a dedicated single-writer thread
+use bounded preallocated queues with an explicit overload policy
+add a checksummed append-only journal and snapshot recovery
+measure gateway, queue, matching, journal, and response tail latency separately
+publish journaled events asynchronously to Kafka
+build idempotent PostgreSQL projections and later pgvector feature windows
+experiment with binary order entry, CPU pinning, and kernel bypass only after measurement
 ```
 
 Detailed roadmap:
@@ -614,8 +642,13 @@ Phase 7: Synthetic order generator
 Phase 8: Benchmarks
 Phase 9: Windmill orchestration
 Phase 10: AI/LangChain/LangGraph analysis foundation paused
-Phase 11: HFT-style systems and optimization
-Phase 12: Postgres persistence, users, instruments, and pricing
+Phase 11: Measured in-memory engine and data-structure optimization
+Phase 12: Postgres control plane, users, instruments, and pricing
+Phase 13: Sequenced single-writer engine runtime
+Phase 14: Durable journal, snapshots, and crash recovery
+Phase 15: Kafka event distribution and idempotent projections
+Phase 16: Persistent binary order gateway
+Phase 17: Profile-guided advanced latency engineering
 ```
 
 Current focus:
@@ -628,6 +661,7 @@ Detailed roadmap:
 
 ```text
 docs/ROADMAP.md
+docs/ARCHITECTURE.md
 docs/HFT_ROADMAP.md
 docs/POSTGRES_MARKET_DATA_ROADMAP.md
 ```
@@ -642,10 +676,15 @@ Rust matching engine
 -> market data metrics
 -> synthetic workloads
 -> benchmark reports
--> HFT-style optimization experiments
--> Postgres persistence, users, instruments, and reference pricing
+-> PostgreSQL control plane and local risk/configuration snapshots
+-> sequenced single-writer matching shards
+-> durable journal, snapshots, and deterministic recovery
+-> Kafka and idempotent query/analytics projections
+-> binary order gateway and stage-level tail-latency measurements
+-> profile-guided HFT optimization experiments
 -> Windmill scheduled runs and dashboards
--> AI scenario analysis and LangGraph research workflows
+-> pgvector market-state research and AI workflows later
 ```
 
-The hot path remains Rust-only.
+The hot path remains Rust-only, in memory, single-writer, bounded, and free of
+database, Kafka, AI, and external network calls.
