@@ -1,4 +1,4 @@
-use crate::api::state::AppState;
+use crate::api::{error::ApiError, state::AppState};
 use axum::{
     Json,
     extract::State,
@@ -45,24 +45,16 @@ pub struct CreateUserResponse {
     pub role: String,
 }
 
-/// JSON returned when an API operation fails.
-#[derive(Debug, Serialize)]
-pub struct ErrorResponse {
-    pub error: &'static str,
-}
-
 pub async fn create_user(
     State(state): State<AppState>,
     Json(request): Json<CreateUserRequest>,
-) -> Result<(StatusCode, Json<CreateUserResponse>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<CreateUserResponse>), ApiError> {
     let display_name = request.display_name.trim();
     // Reject empty names before querying PostgreSQL.
     if display_name.is_empty() {
-        return Err((
+        return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "display_name cannot be empty",
-            }),
+            "display_name cannot be empty",
         ));
     }
 
@@ -99,20 +91,17 @@ pub async fn create_user(
                 role,
             }),
         )),
-        Err(sqlx::Error::Database(error)) if error.code().as_deref() == Some("23505") => Err((
+        Err(sqlx::Error::Database(error)) if error.code().as_deref() == Some("23505") => 
+        Err(ApiError::new(
             StatusCode::CONFLICT,
-            Json(ErrorResponse {
-                error: "email already exists",
-            }),
+            "email already exists",
         )),
         Err(error) => {
             tracing::error!(%error, "failed to create user");
 
-            Err((
+            Err(ApiError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "failed to create user",
-                }),
+                "failed to create user",
             ))
         }
     }
