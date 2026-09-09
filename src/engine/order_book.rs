@@ -64,7 +64,7 @@ impl OrderBook {
         };
 
         for trade in &trades {
-            self.record_trade_executed(&trade);
+            self.record_trade_executed(trade);
         }
         Ok(trades)
     }

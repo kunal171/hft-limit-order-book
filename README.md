@@ -1,21 +1,26 @@
 # Limit Order Book
 
-A Rust limit order book and market microstructure lab.
+A deterministic Rust matching engine and market-systems lab focused on
+price-time priority, replayable state, measurable low-latency behavior, and a
+PostgreSQL-backed trading API.
 
-The project starts with a deterministic matching engine and grows in phases into
-a research platform for event replay, simulation, market metrics, benchmarks,
-AI-assisted analysis, Windmill workflows, and later HFT-style performance
-experiments.
+The matching engine stays in memory and keeps database and workflow operations
+outside its hot path. Around that core, the project provides simulation,
+metrics, replay, Criterion benchmarks, configurable event recording, Windmill
+automation, and an evolving Axum/SQLx backend for users, accounts, instruments,
+and durable market data.
 
 ## Current Status
 
-Completed through:
+Current phase:
 
 ```text
-Phase 8: Benchmarks
-Phase 9: Windmill orchestration in progress
-Phase 10: AI analysis foundation paused
+Phase 11: HFT-style engine work complete
+Phase 12: PostgreSQL persistence and trading API in progress
 ```
+
+Windmill orchestration is operational. The deterministic AI analysis foundation
+is documented and intentionally paused while the HFT and backend layers mature.
 
 Implemented so far:
 
@@ -30,8 +35,12 @@ duplicate active order id validation
 cancel resting orders
 modify resting orders
 active order side index
+order location index for direct cancellation lookup
+lazy cancellation for deep price levels
+cached active quantity per price level
 book snapshots
 event log
+full, trades-only, and disabled event modes
 event replay
 save and load event streams as JSON
 predefined simulator scenarios
@@ -53,6 +62,11 @@ Windmill manual run verified
 Windmill scheduled run verified
 deterministic AI analysis script
 combined run-and-analyze wrapper
+PostgreSQL development environment
+SQLx connection pool
+instrument, user, account, and role migrations
+Axum API binary with tracing
+database-aware health endpoint
 ```
 
 ## Core Idea
@@ -105,12 +119,26 @@ src/
     scenarios.rs    Predefined market scenarios
     runner.rs       Runs scenario commands against a fresh book
 
+  api/
+    admin/          Admin-facing user and market operations
+    health.rs       API and PostgreSQL health check
+    state.rs        Shared Axum application state
+
+  db/
+    connection.rs   PostgreSQL connection pool setup
+
   error.rs          OrderBookError
   lib.rs            Library exports
   main.rs           CLI demo/simulator entrypoint
 
+  bin/
+    api.rs           Axum API entrypoint
+
 benches/
   order_book_bench.rs  Criterion benchmarks for workloads and hot paths
+
+migrations/             SQLx PostgreSQL schema migrations
+docker-compose.yml      Local PostgreSQL service
 
 scripts/
   run_simulation.sh    Release-friendly wrapper for orchestration tools
@@ -326,6 +354,36 @@ Run benchmarks:
 ```bash
 cargo bench
 ```
+
+## PostgreSQL And API
+
+Start the local PostgreSQL service:
+
+```bash
+docker compose up -d
+```
+
+Apply all schema migrations:
+
+```bash
+sqlx migrate run
+```
+
+Start the HTTP API separately from the simulator:
+
+```bash
+cargo run --bin api
+```
+
+Check both the API and its database connection:
+
+```bash
+curl -i http://127.0.0.1:3000/health
+```
+
+The API currently establishes the backend foundation. User creation, account
+management, instrument administration, and durable run/trade persistence are
+the next Phase 12 slices.
 
 ## Orchestration Wrapper
 
@@ -560,10 +618,10 @@ Phase 11: HFT-style systems and optimization
 Phase 12: Postgres persistence, users, instruments, and pricing
 ```
 
-Next focus:
+Current focus:
 
 ```text
-Phase 11: HFT-style systems and optimization
+Phase 12: PostgreSQL persistence, users, accounts, instruments, and pricing
 ```
 
 Detailed roadmap:

@@ -3,6 +3,8 @@
 //! Keep the matching engine separate from `main.rs` so we can test it directly
 //! and later reuse it from an API, CLI, benchmark, or market-data simulator.
 
+pub mod api;
+pub mod db;
 pub mod domain;
 pub mod engine;
 pub mod error;
