@@ -11,8 +11,12 @@ Rust matching engine
 -> benchmarks
 -> Windmill orchestration/dashboard
 -> HFT-style systems and optimization
--> AI analysis layer
--> LangGraph experiment workflows
+-> PostgreSQL control plane
+-> sequenced single-writer engine runtime
+-> durable journal and recovery
+-> Kafka event distribution and query projections
+-> binary gateway and advanced latency experiments
+-> AI/pgvector analysis layer later
 ```
 
 Important project rule:
@@ -69,6 +73,11 @@ phase-09-windmill-integration
 phase-10-ai-analysis-foundation
 phase-11-hft-systems
 phase-12-postgres-market-data
+phase-13-engine-runtime
+phase-14-durable-journal
+phase-15-event-pipeline
+phase-16-binary-gateway
+phase-17-advanced-latency
 ```
 
 ## Current Starting Point
@@ -849,6 +858,151 @@ Detailed database roadmap:
 ```text
 docs/POSTGRES_MARKET_DATA_ROADMAP.md
 ```
+
+## Phase 13: Sequenced Single-Writer Runtime
+
+Goal:
+
+```text
+put a deterministic runtime boundary around the existing in-memory OrderBook
+```
+
+Work:
+
+```text
+define compact EngineCommand and EngineEvent types
+assign a monotonic sequence per matching shard
+give one dedicated thread exclusive ownership of each OrderBook shard
+route decoded commands through bounded preallocated queues
+define an explicit queue-full rejection policy
+measure queue wait and matching time independently
+```
+
+Why:
+
+```text
+one writer avoids locking the book and preserves deterministic command order
+bounded queues prevent overload from becoming unlimited memory growth
+```
+
+Exit criteria:
+
+```text
+no Arc<Mutex<OrderBook>> around the matching core
+same sequenced input produces the same trades and final snapshot
+queue capacity and overload behavior are tested
+p50, p95, p99, and p999 latency are recorded
+```
+
+## Phase 14: Durable Journal And Recovery
+
+Goal:
+
+```text
+make acknowledged commands recoverable without querying Postgres during matching
+```
+
+Work:
+
+```text
+define a versioned append-only binary journal
+add shard_id, engine_sequence, event_id, and checksums
+document memory-only, local-durable, and replicated acknowledgement modes
+create periodic snapshots outside the matching decision
+restore from latest snapshot plus later journal entries
+test truncated/corrupted journal and crash-restart scenarios
+```
+
+Exit criteria:
+
+```text
+recovery reproduces the same book and next sequence
+acknowledgement happens only after the configured durability boundary
+canonical orders/trades cannot be silently dropped
+```
+
+## Phase 15: Kafka And Query Projections
+
+Goal:
+
+```text
+fan durable engine events out to slow systems without blocking matching
+```
+
+Work:
+
+```text
+publish from the journal, never directly from matching
+partition Kafka events by authoritative engine shard
+resume publication from the last durable sequence
+build idempotent PostgreSQL consumers keyed by shard_id + engine_sequence
+commit Kafka offsets only after database transactions commit
+monitor consumer lag and failed records
+```
+
+Later analytical slice:
+
+```text
+aggregate 100 ms and 1 second market-state windows
+version feature definitions and normalization
+store spread/depth/imbalance/trade/cancel/volatility vectors in pgvector
+start with exact vector search; benchmark before adding HNSW
+```
+
+Exit criteria:
+
+```text
+duplicate delivery does not duplicate database effects
+consumers rebuild projections from the beginning
+Kafka/Postgres outages do not mutate matching behavior
+```
+
+## Phase 16: Binary Order Gateway
+
+Goal:
+
+```text
+separate network handling from matching and reduce parsing variability
+```
+
+Work:
+
+```text
+keep HTTP/JSON for admin APIs
+add persistent order-entry connections
+define and version a fixed-layout binary command protocol
+enable TCP_NODELAY where TCP is used
+timestamp receive, decode, queue, match, and response stages
+benchmark JSON versus binary decoding
+```
+
+Exit criteria:
+
+```text
+matching makes no socket calls
+malformed frames are rejected before entering the engine queue
+stage-level tail latency is reported
+```
+
+## Phase 17: Advanced Latency Engineering
+
+Start only after profiles show a measurable bottleneck:
+
+```text
+CPU affinity and isolated cores
+NUMA-aware engine and queue placement
+busy polling versus parked threads
+cache-line padding and false-sharing tests
+fixed-capacity pools and allocation-free command processing
+alternate bounded price ladder
+huge pages
+kernel bypass/DPDK research
+warm standby or replicated deterministic state machine
+```
+
+Success means a documented improvement to tail latency without breaking
+correctness or recovery. Sub-microsecond matching benchmarks are not presented
+as sub-microsecond end-to-end network latency.
 
 ## Phase Merge Checklist
 
