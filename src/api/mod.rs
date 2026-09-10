@@ -3,6 +3,7 @@ use axum::{Router, middleware, routing::get};
 use self::state::AppState;
 
 mod admin;
+pub mod auth;
 pub mod error;
 mod health;
 pub mod state;
