@@ -23,7 +23,8 @@ Current phase:
 ```text
 Phase 11: measured in-memory engine and hot-path data-structure work complete
 Phase 12: PostgreSQL control plane and trading API in progress
-Next: command sequencing, single-writer runtime, and durable journal
+Current slice: signup, login, and PostgreSQL session creation complete
+Next: bearer-token middleware, authorization, logout, and optional Redis cache
 ```
 
 Windmill orchestration is operational. The deterministic AI analysis foundation
@@ -74,6 +75,11 @@ SQLx connection pool
 instrument, user, account, and role migrations
 Axum API binary with tracing
 database-aware health endpoint
+password credentials stored as Argon2 hashes
+one-time administrator bootstrap command
+public trader signup with server-controlled roles
+PostgreSQL-backed login sessions
+256-bit bearer tokens with only SHA-256 hashes stored
 ```
 
 ## HFT Approach
@@ -148,6 +154,7 @@ src/
     runner.rs       Runs scenario commands against a fresh book
 
   api/
+    auth/           Public signup and login operations
     admin/          Admin-facing user and market operations
     health.rs       API and PostgreSQL health check
     state.rs        Shared Axum application state
@@ -160,7 +167,8 @@ src/
   main.rs           CLI demo/simulator entrypoint
 
   bin/
-    api.rs           Axum API entrypoint
+    api.rs              Axum API entrypoint
+    bootstrap_admin.rs  One-time initial administrator creation
 
 benches/
   order_book_bench.rs  Criterion benchmarks for workloads and hot paths
@@ -403,15 +411,51 @@ Start the HTTP API separately from the simulator:
 cargo run --bin api
 ```
 
+Local configuration is loaded from `.env`:
+
+```env
+DATABASE_URL=postgres://postgres:postgres@localhost:5433/limit_order_book
+ADMIN_API_KEY=replace-with-a-long-development-secret
+```
+
+`ADMIN_API_KEY` is temporary development protection for `/admin/*`. It will be
+replaced by role-aware bearer-session middleware.
+
+Create the first administrator interactively:
+
+```bash
+cargo run --bin bootstrap_admin -- admin@example.com "Administrator"
+```
+
+The command prompts for the password without echoing it and atomically inserts
+the administrator and their Argon2 password hash.
+
 Check both the API and its database connection:
 
 ```bash
 curl -i http://127.0.0.1:3000/health
 ```
 
-The API currently establishes the backend foundation. User creation, account
-management, instrument administration, and durable run/trade persistence are
-the next Phase 12 slices.
+Create a trader account:
+
+```bash
+curl -i -X POST http://127.0.0.1:3000/auth/signup \
+  -H 'content-type: application/json' \
+  -d '{"display_name":"Test Trader","email":"trader@example.com","password":"strong-password-123"}'
+```
+
+Create a session:
+
+```bash
+curl -i -X POST http://127.0.0.1:3000/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"trader@example.com","password":"strong-password-123"}'
+```
+
+Signup always assigns the `trader` role in server-side SQL. Login returns a
+random bearer token once; PostgreSQL stores only its SHA-256 digest. The full
+design, test cases, and Redis cache boundary are documented in
+[`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md).
 
 ## Orchestration Wrapper
 
@@ -494,6 +538,9 @@ Next priorities:
 
 ```text
 finish the PostgreSQL control plane without coupling it to matching
+validate PostgreSQL bearer sessions in Axum middleware
+replace the temporary admin API key with role-aware authorization
+add Redis only as an optional session cache with PostgreSQL fallback
 define compact engine commands, events, and monotonic sequences
 run each order-book shard through a dedicated single-writer thread
 use bounded preallocated queues with an explicit overload policy
@@ -643,7 +690,7 @@ Phase 8: Benchmarks
 Phase 9: Windmill orchestration
 Phase 10: AI/LangChain/LangGraph analysis foundation paused
 Phase 11: Measured in-memory engine and data-structure optimization
-Phase 12: Postgres control plane, users, instruments, and pricing
+Phase 12: Postgres control plane, users, authentication, instruments, and pricing
 Phase 13: Sequenced single-writer engine runtime
 Phase 14: Durable journal, snapshots, and crash recovery
 Phase 15: Kafka event distribution and idempotent projections
@@ -654,7 +701,7 @@ Phase 17: Profile-guided advanced latency engineering
 Current focus:
 
 ```text
-Phase 12: PostgreSQL persistence, users, accounts, instruments, and pricing
+Phase 12: bearer-session middleware, authorization, accounts, instruments, and pricing
 ```
 
 Detailed roadmap:
