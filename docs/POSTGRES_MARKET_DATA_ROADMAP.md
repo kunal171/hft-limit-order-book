@@ -655,7 +655,7 @@ Recommended order:
 ```text
 1. Add docs and schema design.
 2. Add sqlx + Postgres connection.
-3. Finish users, accounts, instruments, roles, and admin authorization.
+3. Finish users, accounts, instruments, sessions, and admin authorization.
 4. Expose validated control-plane configuration to gateways/risk snapshots.
 5. Build the sequenced single-writer engine runtime.
 6. Add durable journal and snapshot recovery.
@@ -676,9 +676,9 @@ then add external pricing
 then build dashboards/AI on top
 ```
 
-## First MVP Slice
+## Initial MVP Slice
 
-The first Postgres slice should be intentionally small:
+The first Postgres slice was intentionally small:
 
 ```text
 connect to Postgres
@@ -689,10 +689,10 @@ persist one completed simulation run
 query recent runs
 ```
 
-Avoid initially:
+The project has now moved beyond that initial slice into authentication. Keep
+these concerns out of the matching hot path:
 
 ```text
-authentication
 real money balances
 real-time oracle providers
 production-grade market data feeds

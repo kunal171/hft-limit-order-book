@@ -804,12 +804,12 @@ Detailed HFT roadmap:
 docs/HFT_ROADMAP.md
 ```
 
-## Phase 12: Postgres, Users, Instruments, And Pricing
+## Phase 12: Postgres Control Plane And Authentication
 
 Branch:
 
 ```text
-phase-12-postgres-market-data
+phase-12-postgres-persistence and focused phase-12 feature branches
 ```
 
 Goal:
@@ -823,6 +823,11 @@ Scope:
 ```text
 Postgres connection with sqlx
 users and accounts
+password credentials and initial administrator bootstrap
+public trader signup and login
+hashed, expiring, revocable sessions
+bearer authentication and role-aware authorization
+optional Redis session cache with PostgreSQL fallback
 instruments such as BTC-USDT, ETH-USD, AAPL-USD
 simulation runs
 orders and trades
@@ -857,6 +862,27 @@ Detailed database roadmap:
 
 ```text
 docs/POSTGRES_MARKET_DATA_ROADMAP.md
+```
+
+Completed in the current control-plane work:
+
+```text
+PostgreSQL development service and SQLx pool
+instrument, user, account, role, credential, and session migrations
+database-aware health endpoint
+initial administrator bootstrap
+public signup with a server-controlled trader role
+Argon2 password hashing outside Tokio async workers
+login with 256-bit bearer tokens and hashed session storage
+```
+
+Next control-plane slice:
+
+```text
+validate bearer sessions in Axum middleware
+replace the temporary admin API key with database-backed roles
+add logout, revocation, and authentication integration tests
+measure session lookup before introducing Redis caching
 ```
 
 ## Phase 13: Sequenced Single-Writer Runtime

@@ -139,6 +139,13 @@ PostgreSQL is the control-plane and query store. It holds users, accounts,
 instruments, permissions, configurations, and asynchronous order/trade
 projections. It is never queried by the matching algorithm.
 
+Authentication is also a control-plane concern. PostgreSQL stores Argon2
+password hashes and hashed, expiring, revocable bearer sessions. Axum
+middleware validates sessions before requests reach protected API handlers.
+Redis may later cache validated sessions, but a cache miss or outage falls back
+to PostgreSQL, which remains authoritative. Neither session store is accessed
+by the matching thread.
+
 Kafka distributes journaled events to independent consumers. Ordering is only
 guaranteed within a partition, so events are keyed by authoritative engine
 shard. Consumers use `(shard_id, engine_sequence)` as a unique key and commit
