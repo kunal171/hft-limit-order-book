@@ -2,9 +2,9 @@ use argon2::{
     Argon2,
     password_hash::{PasswordVerifier, phc::PasswordHash},
 };
-use axum::http::StatusCode;
+use axum::{Json, extract::State, http::StatusCode};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::FromRow;
@@ -12,6 +12,9 @@ use tokio::task;
 use uuid::Uuid;
 
 use crate::api::{error::ApiError, state::AppState};
+
+// A fixed duration is sufficient initially; configuration can come later.
+const SESSION_LIFETIME_HOURS: i64 = 12;
 
 /// Credentials accepted by POST /auth/login.
 #[derive(Debug, Deserialize)]
@@ -128,4 +131,79 @@ fn generate_session_token() -> Result<GeneratedToken, ApiError> {
     let hash = Sha256::digest(raw.as_bytes()).to_vec();
 
     Ok(GeneratedToken { raw, hash })
+}
+
+/// Verifies credentials and creates a new database-backed session.
+pub async fn login(
+    State(state): State<AppState>,
+    Json(request): Json<LoginRequest>,
+) -> Result<(StatusCode, Json<LoginResponse>), ApiError> {
+    let email = request.email.trim().to_lowercase();
+
+    if email.is_empty() || request.password.is_empty() {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "email and password are required",
+        ));
+    }
+
+    let user = find_login_user(&state, &email).await?.ok_or_else(|| {
+        // Do not reveal whether the email address exists.
+        ApiError::new(StatusCode::UNAUTHORIZED, "invalid email or password")
+    })?;
+
+    let password_matches = verify_password(request.password, user.password_hash).await?;
+
+    if !password_matches {
+        // Use the same error as an unknown email to prevent account discovery.
+        return Err(ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "invalid email or password",
+        ));
+    }
+
+    // Only reveal account status after valid credentials were supplied.
+    if user.status != "active" {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "account is not active",
+        ));
+    }
+
+    let token = generate_session_token()?;
+    let session_id = Uuid::now_v7();
+    let expires_at = Utc::now() + Duration::hours(SESSION_LIFETIME_HOURS);
+
+    let GeneratedToken { raw, hash } = token;
+
+    // Only the token hash is stored. The raw bearer token is returned once.
+    sqlx::query(
+        r#"
+        INSERT INTO sessions (id, user_id, token_hash, expires_at)
+        VALUES ($1, $2, $3, $4)
+        "#,
+    )
+    .bind(session_id)
+    .bind(user.id)
+    .bind(hash)
+    .bind(&expires_at)
+    .execute(&state.db)
+    .await
+    .map_err(|error| {
+        tracing::error!(%error, user_id = %user.id, "failed to create session");
+
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to create session",
+        )
+    })?;
+
+    Ok((
+        StatusCode::OK,
+        Json(LoginResponse {
+            user_id: user.id,
+            access_token: raw,
+            expires_at,
+        }),
+    ))
 }

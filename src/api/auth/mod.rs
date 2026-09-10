@@ -7,5 +7,7 @@ pub mod signup;
 
 /// Routes that do not require an existing authenticated session.
 pub fn router() -> Router<AppState> {
-    Router::new().route("/signup", post(signup::signup))
+    Router::new()
+        .route("/signup", post(signup::signup))
+        .route("/login", post(login::login))
 }
