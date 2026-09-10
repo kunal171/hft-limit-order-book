@@ -18,6 +18,7 @@ pub fn router(state: AppState) -> Router {
 
     Router::new()
         .route("/health", get(health::health))
+        .nest("/auth", auth::router())
         .nest("/admin", admin_routes)
         .with_state(state)
 }
