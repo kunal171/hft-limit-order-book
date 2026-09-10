@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         return Err(invalid_input("passwords do not match").into());
     }
 
-    if password.chars().count() < 12 {
+    if password.chars().count() < 15 {
         return Err(invalid_input("password must contain at least 15 characters").into());
     }
 
