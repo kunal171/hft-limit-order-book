@@ -2,6 +2,7 @@ use axum::{Router, routing::post};
 
 use crate::api::state::AppState;
 
+pub mod login;
 pub mod signup;
 
 /// Routes that do not require an existing authenticated session.
