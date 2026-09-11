@@ -39,8 +39,13 @@ pub struct CurrentUserResponse {
     pub role: String,
 }
 
+/// Produces the digest used as the session lookup key.
+pub(super) fn hash_token(raw_token: &str) -> Vec<u8> {
+    Sha256::digest(raw_token.as_bytes()).to_vec()
+}
+
 /// Extracts the raw token from `Authorization: Bearer <token>`.
-fn bearer_token(request: &Request) -> Result<&str, ApiError> {
+pub(super) fn bearer_token(request: &Request) -> Result<&str, ApiError> {
     let header = request
         .headers()
         .get(AUTHORIZATION)
@@ -68,7 +73,7 @@ async fn find_valid_session(
     raw_token: &str,
 ) -> Result<Option<SessionUserRow>, ApiError> {
     // Login stores this same SHA-256 digest, never the raw token.
-    let token_hash = Sha256::digest(raw_token.as_bytes()).to_vec();
+    let token_hash = hash_token(raw_token);
 
     sqlx::query_as::<_, SessionUserRow>(
         r#"

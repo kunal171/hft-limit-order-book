@@ -6,10 +6,11 @@ use axum::{
 use crate::api::state::AppState;
 
 pub mod login;
+pub mod logout;
 pub mod sessions;
 pub mod signup;
 
-/// Routes that do not require an existing authenticated session.
+/// Builds public authentication routes and protected session routes.
 pub fn router(state: AppState) -> Router<AppState> {
     let protected_routes = Router::new()
         .route("/me", get(sessions::current_user))
@@ -22,5 +23,6 @@ pub fn router(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/signup", post(signup::signup))
         .route("/login", post(login::login))
+        .route("/logout", post(logout::logout))
         .merge(protected_routes)
 }
