@@ -17,7 +17,9 @@ Implemented endpoints and tools:
 cargo run --bin bootstrap_admin   creates the first administrator
 POST /auth/signup                 creates an active trader and credentials
 POST /auth/login                  verifies credentials and creates a session
-POST /admin/users                 temporary admin-key-protected provisioning
+GET  /auth/me                     returns the authenticated user and role
+POST /auth/logout                 idempotently revokes the supplied session
+POST /admin/users                 requires an authenticated administrator
 ```
 
 Public signup never accepts a role. The SQL statement assigns `trader`, and
@@ -78,19 +80,30 @@ The local PostgreSQL-backed flow has been exercised with these results:
 signup                 201 Created
 valid login            200 OK
 incorrect password     401 Unauthorized
+valid bearer session   200 OK
+expired session        401 Unauthorized
+revoked session        401 Unauthorized
+suspended user         403 Forbidden
+trader on admin route  403 Forbidden
+admin on admin route   request reaches handler
+repeated logout        204 No Content
 stored token digest    32 bytes
 raw token in database  no
 ```
 
-## Next: Bearer Middleware
+Five bearer-parser unit tests and five isolated PostgreSQL integration tests
+cover these rules. SQLx creates a temporary migrated database for every
+integration test.
 
-The next implementation reads this header:
+## Bearer Middleware And Authorization
+
+Protected requests use this header:
 
 ```text
 Authorization: Bearer <raw-token>
 ```
 
-Middleware will:
+Middleware performs this flow:
 
 ```text
 parse the header
@@ -105,12 +118,13 @@ parse the header
 Protected handlers must trust only the authenticated request extension. They
 must never trust a user ID or role supplied in JSON or custom headers.
 
-After bearer middleware works, `/admin/*` will require the stored `admin` role
-and the temporary `x-admin-api-key` mechanism can be removed.
+Routes under `/admin/*` apply a second middleware layer that requires the role
+loaded from PostgreSQL to be `admin`. The temporary `x-admin-api-key` mechanism
+has been removed.
 
 ## Logout And Revocation
 
-Logout will set `revoked_at` in PostgreSQL rather than deleting the session.
+Logout sets `revoked_at` in PostgreSQL rather than deleting the session.
 This keeps a useful audit trail and makes repeated logout requests idempotent.
 Administrative account suspension must also make existing sessions unusable.
 
@@ -149,14 +163,11 @@ local Rust memory.
 ## Remaining Security Work
 
 ```text
-bearer authentication middleware
-role-aware admin authorization
-logout and administrative revocation
 login rate limiting
 dummy password verification for unknown-email timing resistance
 TLS at the deployment boundary
 secret management outside local .env files
 session and security audit events
-integration tests for expiry, revocation, suspension, and duplicate signup
+integration tests for duplicate signup and invalid credentials
 optional Redis cache with PostgreSQL fallback
 ```
