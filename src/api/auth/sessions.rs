@@ -147,3 +147,63 @@ pub async fn current_user(
         role: user.role,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{body::Body, response::IntoResponse};
+
+    /// Builds a request with an optional Authorization header.
+    fn request_with_authorization(header: Option<&str>) -> Request {
+        let mut builder = Request::builder();
+
+        if let Some(header) = header {
+            builder = builder.header(AUTHORIZATION, header);
+        }
+
+        builder
+            .body(Body::empty())
+            .expect("test request should be valid")
+    }
+
+    #[test]
+    fn extracts_bearer_token() {
+        let request = request_with_authorization(Some("Bearer test-token"));
+
+        assert_eq!(bearer_token(&request).unwrap(), "test-token");
+    }
+
+    #[test]
+    fn bearer_scheme_is_case_insensitive() {
+        let request = request_with_authorization(Some("bearer test-token"));
+
+        assert_eq!(bearer_token(&request).unwrap(), "test-token");
+    }
+
+    #[test]
+    fn rejects_missing_authorization_header() {
+        let request = request_with_authorization(None);
+
+        let response = bearer_token(&request).unwrap_err().into_response();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn rejects_wrong_authorization_scheme() {
+        let request = request_with_authorization(Some("Basic test-token"));
+
+        let response = bearer_token(&request).unwrap_err().into_response();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn rejects_empty_bearer_token() {
+        let request = request_with_authorization(Some("Bearer "));
+
+        let response = bearer_token(&request).unwrap_err().into_response();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+}
