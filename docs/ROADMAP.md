@@ -874,14 +874,18 @@ initial administrator bootstrap
 public signup with a server-controlled trader role
 Argon2 password hashing outside Tokio async workers
 login with 256-bit bearer tokens and hashed session storage
+bearer-session middleware with current user and role lookup
+database-backed administrator authorization
+idempotent logout and session revocation
+unit and isolated PostgreSQL authentication integration tests
 ```
 
 Next control-plane slice:
 
 ```text
-validate bearer sessions in Axum middleware
-replace the temporary admin API key with database-backed roles
-add logout, revocation, and authentication integration tests
+add authenticated account creation and listing
+add administrator-managed instruments and market configuration
+add reference/oracle pricing for risk checks and analytics
 measure session lookup before introducing Redis caching
 ```
 

@@ -23,8 +23,8 @@ Current phase:
 ```text
 Phase 11: measured in-memory engine and hot-path data-structure work complete
 Phase 12: PostgreSQL control plane and trading API in progress
-Current slice: signup, login, and PostgreSQL session creation complete
-Next: bearer-token middleware, authorization, logout, and optional Redis cache
+Current slice: database-backed authentication and authorization complete
+Next: authenticated account API, then admin-managed instruments and pricing
 ```
 
 Windmill orchestration is operational. The deterministic AI analysis foundation
@@ -415,11 +415,7 @@ Local configuration is loaded from `.env`:
 
 ```env
 DATABASE_URL=postgres://postgres:postgres@localhost:5433/limit_order_book
-ADMIN_API_KEY=replace-with-a-long-development-secret
 ```
-
-`ADMIN_API_KEY` is temporary development protection for `/admin/*`. It will be
-replaced by role-aware bearer-session middleware.
 
 Create the first administrator interactively:
 
@@ -456,6 +452,24 @@ Signup always assigns the `trader` role in server-side SQL. Login returns a
 random bearer token once; PostgreSQL stores only its SHA-256 digest. The full
 design, test cases, and Redis cache boundary are documented in
 [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md).
+
+Use the returned token with protected routes:
+
+```bash
+curl -i http://127.0.0.1:3000/auth/me \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Logout revokes the PostgreSQL session and is idempotent:
+
+```bash
+curl -i -X POST http://127.0.0.1:3000/auth/logout \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Routes under `/admin/*` first validate the bearer session and then require the
+current database role to be `admin`. The former shared `x-admin-api-key`
+mechanism has been removed.
 
 ## Orchestration Wrapper
 
@@ -538,8 +552,9 @@ Next priorities:
 
 ```text
 finish the PostgreSQL control plane without coupling it to matching
-validate PostgreSQL bearer sessions in Axum middleware
-replace the temporary admin API key with role-aware authorization
+add authenticated account ownership APIs
+add admin-managed instruments and market configuration
+add reference/oracle pricing for risk and analytics
 add Redis only as an optional session cache with PostgreSQL fallback
 define compact engine commands, events, and monotonic sequences
 run each order-book shard through a dedicated single-writer thread
@@ -701,7 +716,7 @@ Phase 17: Profile-guided advanced latency engineering
 Current focus:
 
 ```text
-Phase 12: bearer-session middleware, authorization, accounts, instruments, and pricing
+Phase 12: accounts, instruments, and reference/oracle pricing
 ```
 
 Detailed roadmap:
