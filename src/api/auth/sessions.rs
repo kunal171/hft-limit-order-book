@@ -1,7 +1,7 @@
 use axum::{Extension, Json};
 use axum::{
     extract::{Request, State},
-    http::{StatusCode, header::AUTHORIZATION, request},
+    http::{StatusCode, header::AUTHORIZATION},
     middleware::Next,
     response::Response,
 };
