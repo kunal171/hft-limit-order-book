@@ -59,19 +59,19 @@ pub struct InstrumentResponse {
 }
 
 pub async fn create_asset(
-    State(state) : State<AppState>,
+    State(state): State<AppState>,
     Extension(user): Extension<AuthenticatedUser>,
     Json(request): Json<CreateInstrumentRequest>,
 ) -> Result<(StatusCode, Json<InstrumentResponse>), ApiError> {
     let request = match validate_instrument(request) {
-            Ok(request) => request,
-            Err(error) => return Err(error),
-        };
+        Ok(request) => request,
+        Err(error) => return Err(error),
+    };
 
     let asset_id = Uuid::now_v7();
     let market_status = MarketStatus::Active;
 
-    let result = sqlx::query_as::<_,InstrumentResponse >(
+    let result = sqlx::query_as::<_, InstrumentResponse>(
         r#"
         INSERT INTO instruments(
             id, 
@@ -86,7 +86,7 @@ pub async fn create_asset(
             status
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        "#
+        "#,
     )
     .bind(asset_id)
     .bind(request.symbol)
@@ -105,9 +105,9 @@ pub async fn create_asset(
         Ok(instrument) => Ok((StatusCode::CREATED, Json(instrument))),
 
         // UNIQUE(Asset Symbol) prevents duplicate Asset Symbols.
-        Err(sqlx::Error::Database(error)) if error.code().as_deref() == Some("23505") => Err(
-            ApiError::new(StatusCode::CONFLICT, "Asset already exists"),
-        ),
+        Err(sqlx::Error::Database(error)) if error.code().as_deref() == Some("23505") => {
+            Err(ApiError::new(StatusCode::CONFLICT, "Asset already exists"))
+        }
 
         Err(error) => {
             tracing::error!(
@@ -133,9 +133,7 @@ fn validate_instrument(
     request.base_asset = request.base_asset.trim().to_ascii_uppercase();
     request.quote_asset = request.quote_asset.trim().to_ascii_uppercase();
 
-    if request.symbol.is_empty()
-        || request.base_asset.is_empty()
-        || request.quote_asset.is_empty()
+    if request.symbol.is_empty() || request.base_asset.is_empty() || request.quote_asset.is_empty()
     {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
@@ -152,9 +150,7 @@ fn validate_instrument(
     }
 
     // Scales represent decimal places used by fixed-point integers.
-    if !(0..=18).contains(&request.price_scale)
-        || !(0..=18).contains(&request.quantity_scale)
-    {
+    if !(0..=18).contains(&request.price_scale) || !(0..=18).contains(&request.quantity_scale) {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
             "scales must be between 0 and 18",
