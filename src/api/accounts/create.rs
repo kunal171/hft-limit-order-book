@@ -1,7 +1,6 @@
+use super::model::AccountResponse;
 use axum::{Extension, Json, extract::State, http::StatusCode};
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::api::{auth::sessions::AuthenticatedUser, error::ApiError, state::AppState};
@@ -13,16 +12,6 @@ use crate::api::{auth::sessions::AuthenticatedUser, error::ApiError, state::AppS
 #[serde(deny_unknown_fields)]
 pub struct CreateAccountRequest {
     pub name: String,
-}
-
-/// Public account representation returned by the API.
-#[derive(Debug, Serialize, FromRow)]
-pub struct AccountResponse {
-    pub id: Uuid,
-    pub user_id: Uuid,
-    pub name: String,
-    pub status: String,
-    pub created_at: DateTime<Utc>,
 }
 
 /// Creates an account owned by the authenticated user.

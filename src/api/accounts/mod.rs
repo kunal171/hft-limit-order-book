@@ -3,6 +3,7 @@ use axum::{Router, routing::post};
 use crate::api::state::AppState;
 
 pub mod create;
+pub mod model;
 
 /// Builds account routes.
 ///
