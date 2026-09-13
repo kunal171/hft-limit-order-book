@@ -1,7 +1,7 @@
-use super::model::AccountResponse;
 use axum::{Extension, Json, extract::State, http::StatusCode};
-use serde::Deserialize;
 use uuid::Uuid;
+use serde::Deserialize;
+use super::model::AccountResponse;
 
 use crate::api::{auth::sessions::AuthenticatedUser, error::ApiError, state::AppState};
 
@@ -13,6 +13,7 @@ use crate::api::{auth::sessions::AuthenticatedUser, error::ApiError, state::AppS
 pub struct CreateAccountRequest {
     pub name: String,
 }
+
 
 /// Creates an account owned by the authenticated user.
 pub async fn create_account(

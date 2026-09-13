@@ -8,6 +8,7 @@ use axum::{
     response::Response,
 };
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
@@ -104,4 +105,15 @@ pub async fn login(app: &Router, email: &str) -> String {
         serde_json::from_slice(&body).expect("login response should contain JSON");
 
     login.access_token
+}
+
+/// Deserializes an HTTP response body into the requested test type.
+// Some integration-test binaries do not inspect JSON response bodies.
+#[allow(dead_code)]
+pub async fn read_json<T: DeserializeOwned>(response: Response) -> T {
+    let body = to_bytes(response.into_body(), MAX_RESPONSE_BYTES)
+        .await
+        .expect("response body should be readable");
+
+    serde_json::from_slice(&body).expect("response should contain valid JSON")
 }
