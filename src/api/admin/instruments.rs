@@ -78,22 +78,15 @@ pub async fn create_instruments(
         ));
     }
 
-    // Validate and normalize all requests first
+    // Validate and normalize every request before opening the transaction.
     let requests = requests
         .into_iter()
         .map(validate_instrument)
         .collect::<Result<Vec<_>, _>>()?;
 
-    if requests.is_empty() {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "at least one instrument is required",
-        ));
-    }
-
     let market_status = MarketStatus::Active;
 
-    // Start transaction
+    // One transaction makes the batch all-or-nothing.
     let mut transaction = state.db.begin().await.map_err(|error| {
         tracing::error!(
             %error,
@@ -101,7 +94,10 @@ pub async fn create_instruments(
             "failed to start transaction"
         );
 
-        ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "failed to create assets")
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to create instruments",
+        )
     })?;
 
     let mut instruments = Vec::with_capacity(requests.len());
@@ -159,7 +155,7 @@ pub async fn create_instruments(
             Err(sqlx::Error::Database(error)) if error.code().as_deref() == Some("23505") => {
                 return Err(ApiError::new(
                     StatusCode::CONFLICT,
-                    "one or more assets already exist",
+                    "one or more instruments already exist",
                 ));
             }
 
@@ -167,26 +163,29 @@ pub async fn create_instruments(
                 tracing::error!(
                     %error,
                     user_id = %user.user_id,
-                    "failed to create assets"
+                    "failed to create instruments"
                 );
 
                 return Err(ApiError::new(
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    "failed to create assets",
+                    "failed to create instruments",
                 ));
             }
         }
     }
 
-    // Commit only if every insert succeeded
+    // Commit only if every insert succeeded.
     transaction.commit().await.map_err(|error| {
         tracing::error!(
             %error,
             user_id = %user.user_id,
-            "failed to commit asset creation"
+            "failed to commit instrument creation"
         );
 
-        ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "failed to create assets")
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to create instruments",
+        )
     })?;
 
     Ok((StatusCode::CREATED, Json(instruments)))
@@ -205,7 +204,7 @@ fn validate_instrument(
     {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
-            "symbol and assets cannot be empty",
+            "symbol and asset codes cannot be empty",
         ));
     }
 

@@ -120,6 +120,8 @@ pub async fn read_json<T: DeserializeOwned>(response: Response) -> T {
 }
 
 /// Creates a trader, promotes them for test setup, and returns an admin token.
+// Integration-test binaries that do not test admin routes leave this unused.
+#[allow(dead_code)]
 pub async fn admin_token(app: &Router, pool: &PgPool, email: &str) -> String {
     signup(app, email).await;
 

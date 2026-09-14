@@ -169,3 +169,123 @@ async fn duplicate_symbol_rolls_back_entire_batch(pool: PgPool) {
 
     assert_eq!(symbols, vec!["BTC-USDT"]);
 }
+
+#[sqlx::test]
+async fn invalid_instrument_batches_are_rejected(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+    let token = admin_token(&app, &pool, "validation-admin@example.com").await;
+
+    let invalid_symbol = instrument_request("BTC/USDT", "BTC", "USDT");
+
+    let same_assets = instrument_request("USD-USD", "USD", "USD");
+
+    let mut invalid_scale = instrument_request("ETH-USDT", "ETH", "USDT");
+    invalid_scale["price_scale"] = json!(19);
+
+    let mut invalid_quantity_scale = instrument_request("XRP-USDT", "XRP", "USDT");
+    invalid_quantity_scale["quantity_scale"] = json!(-1);
+
+    let mut invalid_tick = instrument_request("SOL-USDT", "SOL", "USDT");
+    invalid_tick["tick_size"] = json!(0);
+
+    let mut invalid_lot = instrument_request("AAPL-USD", "AAPL", "USD");
+    invalid_lot["lot_size"] = json!(0);
+
+    let cases = vec![
+        ("empty batch", Value::Array(vec![])),
+        ("invalid symbol", Value::Array(vec![invalid_symbol])),
+        ("same assets", Value::Array(vec![same_assets])),
+        ("invalid scale", Value::Array(vec![invalid_scale])),
+        (
+            "invalid quantity scale",
+            Value::Array(vec![invalid_quantity_scale]),
+        ),
+        ("invalid tick", Value::Array(vec![invalid_tick])),
+        ("invalid lot", Value::Array(vec![invalid_lot])),
+    ];
+
+    for (case, body) in cases {
+        let response = send(
+            &app,
+            json_request(Method::POST, "/admin/instruments", body, Some(&token)),
+        )
+        .await;
+
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "failed validation case: {case}",
+        );
+    }
+
+    // Invalid requests must never create partial data.
+    let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM instruments")
+        .fetch_one(&pool)
+        .await
+        .expect("instrument count should be readable");
+
+    assert_eq!(count, 0);
+}
+
+#[sqlx::test]
+async fn instrument_creation_without_token_is_rejected(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+
+    let response = send(
+        &app,
+        json_request(
+            Method::POST,
+            "/admin/instruments",
+            Value::Array(vec![instrument_request("BTC-USDT", "BTC", "USDT")]),
+            None,
+        ),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    // Authentication must fail before the handler inserts anything.
+    let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM instruments")
+        .fetch_one(&pool)
+        .await
+        .expect("instrument count should be readable");
+
+    assert_eq!(count, 0);
+}
+
+#[sqlx::test]
+async fn instrument_batch_larger_than_limit_is_rejected(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+    let token = admin_token(&app, &pool, "batch-limit-admin@example.com").await;
+
+    // Generate one more request than the endpoint's configured maximum.
+    let instruments = (0..101)
+        .map(|index| {
+            instrument_request(
+                &format!("ASSET{index}-USD"),
+                &format!("ASSET{index}"),
+                "USD",
+            )
+        })
+        .collect();
+
+    let response = send(
+        &app,
+        json_request(
+            Method::POST,
+            "/admin/instruments",
+            Value::Array(instruments),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM instruments")
+        .fetch_one(&pool)
+        .await
+        .expect("instrument count should be readable");
+
+    assert_eq!(count, 0);
+}
