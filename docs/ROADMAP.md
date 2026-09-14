@@ -878,13 +878,13 @@ bearer-session middleware with current user and role lookup
 database-backed administrator authorization
 idempotent logout and session revocation
 unit and isolated PostgreSQL authentication integration tests
+authenticated account creation and owner-scoped listing
+administrator-managed instrument creation with atomic batch rollback
 ```
 
 Next control-plane slice:
 
 ```text
-add authenticated account creation and listing
-add administrator-managed instruments and market configuration
 add reference/oracle pricing for risk checks and analytics
 measure session lookup before introducing Redis caching
 ```

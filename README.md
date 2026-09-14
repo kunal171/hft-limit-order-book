@@ -23,8 +23,8 @@ Current phase:
 ```text
 Phase 11: measured in-memory engine and hot-path data-structure work complete
 Phase 12: PostgreSQL control plane and trading API in progress
-Current slice: database-backed authentication and authorization complete
-Next: authenticated account API, then admin-managed instruments and pricing
+Current slice: authentication, accounts, and admin instrument creation complete
+Next: reference/oracle pricing for risk checks and analytics
 ```
 
 Windmill orchestration is operational. The deterministic AI analysis foundation
@@ -80,6 +80,9 @@ one-time administrator bootstrap command
 public trader signup with server-controlled roles
 PostgreSQL-backed login sessions
 256-bit bearer tokens with only SHA-256 hashes stored
+authenticated account creation and owner-scoped listing
+atomic administrator-managed instrument batch creation
+instrument authorization, validation, conflict, and rollback tests
 ```
 
 ## HFT Approach
@@ -120,6 +123,12 @@ memory growth.
 
 The complete current and target design is documented in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+Current executable, API, authentication, database, matching, simulation, and
+replay flows are diagrammed in
+[`docs/CURRENT_ARCHITECTURE_FLOWCHARTS.md`](docs/CURRENT_ARCHITECTURE_FLOWCHARTS.md).
+The editable high-level design is available as
+[`docs/diagrams/current-system-hld.drawio`](docs/diagrams/current-system-hld.drawio).
 
 AI integration remains paused until command sequencing, the single-writer
 runtime, durability, and hot-path latency measurements are in place.
@@ -724,6 +733,7 @@ Detailed roadmap:
 ```text
 docs/ROADMAP.md
 docs/ARCHITECTURE.md
+docs/CURRENT_ARCHITECTURE_FLOWCHARTS.md
 docs/HFT_ROADMAP.md
 docs/POSTGRES_MARKET_DATA_ROADMAP.md
 ```

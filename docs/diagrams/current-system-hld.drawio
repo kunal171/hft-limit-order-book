@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-09-14T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="current-system-hld" name="Current System HLD">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="title" value="HFT-Style Limit Order Book - Current High-Level Design" style="text;html=1;align=left;verticalAlign=middle;fontSize=24;fontStyle=1;fontColor=#17202A;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="950" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="subtitle" value="Implemented runtime boundaries in Phase 12" style="text;html=1;align=left;verticalAlign=middle;fontSize=13;fontColor=#566573;" vertex="1" parent="1">
+          <mxGeometry x="40" y="58" width="700" height="25" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="control-plane" value="CONTROL PLANE - Axum API process" style="swimlane;html=1;rounded=0;startSize=34;horizontal=1;fontStyle=1;fontSize=15;fillColor=#EAF2F8;strokeColor=#2874A6;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="300" y="110" width="760" height="330" as="geometry"/>
+        </mxCell>
+        <mxCell id="engine-plane" value="SIMULATION AND MATCHING - Separate CLI process" style="swimlane;html=1;rounded=0;startSize=34;horizontal=1;fontStyle=1;fontSize=15;fillColor=#FEF5E7;strokeColor=#CA6F1E;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="300" y="510" width="760" height="290" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="trader" value="Trader / API client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D6EAF8;strokeColor=#2874A6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="50" y="150" width="180" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="admin" value="Administrator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCF3CF;strokeColor=#B7950B;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="50" y="240" width="180" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="windmill" value="Windmill scheduler / operator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8DAEF;strokeColor=#7D3C98;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="50" y="570" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="developer" value="Developer / benchmark runner" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F8F5;strokeColor=#148F77;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="50" y="680" width="180" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="api-entry" value="API binary&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;src/bin/api.rs : 127.0.0.1:3000&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2874A6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="330" y="165" width="180" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="router" value="Axum router&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;health, auth, accounts, admin&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2874A6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="550" y="165" width="190" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="auth-middleware" value="Bearer authentication&lt;br&gt;+ admin authorization" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCF3CF;strokeColor=#B7950B;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="785" y="165" width="210" height="65" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="auth-api" value="Authentication&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;signup, login, me, logout&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FDFEFE;strokeColor=#5DADE2;" vertex="1" parent="1">
+          <mxGeometry x="340" y="285" width="190" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="account-api" value="Accounts&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;create and list owned accounts&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FDFEFE;strokeColor=#5DADE2;" vertex="1" parent="1">
+          <mxGeometry x="575" y="285" width="190" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="admin-api" value="Admin operations&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;users + atomic instrument batch&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FDFEFE;strokeColor=#5DADE2;" vertex="1" parent="1">
+          <mxGeometry x="810" y="285" width="210" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="postgres" value="PostgreSQL&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;users, credentials, sessions,&lt;br&gt;accounts, instruments&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#D5F5E3;strokeColor=#1E8449;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="205" width="220" height="130" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="scripts" value="Shell orchestration&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;run, analyze, combined wrapper&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4ECF7;strokeColor=#7D3C98;" vertex="1" parent="1">
+          <mxGeometry x="325" y="570" width="190" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="cli" value="Simulator / replay CLI&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;src/main.rs&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#CA6F1E;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="555" y="570" width="180" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="runner" value="Scenario runner&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;add, cancel, modify commands&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#CA6F1E;" vertex="1" parent="1">
+          <mxGeometry x="780" y="570" width="190" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="order-book" value="In-memory OrderBook&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;price-time matching&lt;br&gt;BTreeMap + HashMap + VecDeque&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAD7A0;strokeColor=#A04000;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="775" y="680" width="210" height="85" as="geometry"/>
+        </mxCell>
+        <mxCell id="generators" value="Scenarios and synthetic generators" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#CA6F1E;" vertex="1" parent="1">
+          <mxGeometry x="555" y="690" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="outputs" value="Events, trades, snapshots&lt;br&gt;and metrics" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D4EFDF;strokeColor=#239B56;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1115" y="560" width="220" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="artifacts" value="Run artifacts&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;events.json, snapshot.json,&lt;br&gt;summary.json&lt;/font&gt;" style="shape=folder;tabWidth=60;tabHeight=20;tabPosition=left;html=1;whiteSpace=wrap;fillColor=#D4EFDF;strokeColor=#239B56;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="680" width="190" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="analyzer" value="Deterministic Python analyzer&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;AI expansion paused&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8DAEF;strokeColor=#7D3C98;" vertex="1" parent="1">
+          <mxGeometry x="1380" y="680" width="170" height="75" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="gap" value="NOT CONNECTED TODAY&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;No network order API or command queue&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FDEDEC;strokeColor=#C0392B;dashed=1;fontColor=#922B21;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="405" width="270" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="planned" value="PLANNED BRIDGE&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;order gateway - bounded queue - dedicated single-writer engine&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F3F4;strokeColor=#7B7D7D;dashed=1;fontColor=#566573;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="90" width="390" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e-trader-api" value="HTTP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#2874A6;" edge="1" parent="1" source="trader" target="api-entry">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-admin-api" value="HTTP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#B7950B;" edge="1" parent="1" source="admin" target="api-entry">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-api-router" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#2874A6;" edge="1" parent="1" source="api-entry" target="router">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-router-auth" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#2874A6;" edge="1" parent="1" source="router" target="auth-middleware">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-router-auth-api" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#5DADE2;" edge="1" parent="1" source="router" target="auth-api">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-auth-accounts" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#B7950B;" edge="1" parent="1" source="auth-middleware" target="account-api">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-auth-admin" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#B7950B;" edge="1" parent="1" source="auth-middleware" target="admin-api">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-auth-db" value="SQLx" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#1E8449;" edge="1" parent="1" source="auth-api" target="postgres">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-account-db" value="SQLx" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#1E8449;" edge="1" parent="1" source="account-api" target="postgres">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-admin-db" value="transactional SQLx" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#1E8449;" edge="1" parent="1" source="admin-api" target="postgres">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e-windmill-scripts" value="scheduled/manual run" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#7D3C98;" edge="1" parent="1" source="windmill" target="scripts">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-developer-cli" value="cargo run / bench" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#148F77;" edge="1" parent="1" source="developer" target="cli">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-scripts-cli" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#7D3C98;" edge="1" parent="1" source="scripts" target="cli">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-generator-cli" value="commands" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#CA6F1E;" edge="1" parent="1" source="generators" target="cli">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-cli-runner" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#CA6F1E;" edge="1" parent="1" source="cli" target="runner">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-runner-book" value="sequential commands" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#CA6F1E;" edge="1" parent="1" source="runner" target="order-book">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-book-output" value="in-memory results" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#239B56;" edge="1" parent="1" source="order-book" target="outputs">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-output-artifact" value="optional JSON" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#239B56;" edge="1" parent="1" source="outputs" target="artifacts">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-artifact-analyzer" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#7D3C98;" edge="1" parent="1" source="artifacts" target="analyzer">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e-api-gap" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;dashed=1;strokeWidth=2;strokeColor=#C0392B;" edge="1" parent="1" source="control-plane" target="gap">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-gap-engine" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;dashed=1;strokeWidth=2;strokeColor=#C0392B;" edge="1" parent="1" source="gap" target="engine-plane">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

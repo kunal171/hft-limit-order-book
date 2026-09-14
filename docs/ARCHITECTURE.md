@@ -4,6 +4,9 @@ This is the source of truth for the target runtime architecture. The project is
 an HFT-style learning system: it applies low-latency exchange design principles,
 but it is not yet production trading infrastructure.
 
+For diagrams of only the components and flows implemented today, see
+[`CURRENT_ARCHITECTURE_FLOWCHARTS.md`](CURRENT_ARCHITECTURE_FLOWCHARTS.md).
+
 ## Design Goals
 
 ```text

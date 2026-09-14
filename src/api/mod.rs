@@ -2,6 +2,7 @@ use axum::{Router, middleware, routing::get};
 
 use self::state::AppState;
 
+pub mod accounts;
 mod admin;
 pub mod auth;
 pub mod error;
@@ -20,9 +21,15 @@ pub fn router(state: AppState) -> Router {
             auth::sessions::require_authenticated,
         ));
 
+    let account_routes = accounts::router().route_layer(middleware::from_fn_with_state(
+        state.clone(),
+        auth::sessions::require_authenticated,
+    ));
+
     Router::new()
         .route("/health", get(health::health))
         .nest("/auth", auth::router(state.clone()))
         .nest("/admin", admin_routes)
+        .nest("/accounts", account_routes)
         .with_state(state)
 }
