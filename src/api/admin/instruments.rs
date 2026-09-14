@@ -2,11 +2,11 @@ use axum::{Extension, Json, extract::State, http::StatusCode};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Type};
-use tracing::instrument;
 use uuid::Uuid;
 
 use crate::api::{auth::sessions::AuthenticatedUser, error::ApiError, state::AppState};
 
+const MAX_INSTRUMENTS_PER_REQUEST: usize = 100;
 /// Instrument categories supported by the PostgreSQL asset_class enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
 #[serde(rename_all = "lowercase")]
@@ -58,70 +58,138 @@ pub struct InstrumentResponse {
     pub created_at: DateTime<Utc>,
 }
 
-pub async fn create_asset(
+/// Creates multiple instruments atomically.
+pub async fn create_instruments(
     State(state): State<AppState>,
     Extension(user): Extension<AuthenticatedUser>,
-    Json(request): Json<CreateInstrumentRequest>,
-) -> Result<(StatusCode, Json<InstrumentResponse>), ApiError> {
-    let request = match validate_instrument(request) {
-        Ok(request) => request,
-        Err(error) => return Err(error),
-    };
+    Json(requests): Json<Vec<CreateInstrumentRequest>>,
+) -> Result<(StatusCode, Json<Vec<InstrumentResponse>>), ApiError> {
+    if requests.is_empty() {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "at least one instrument is required",
+        ));
+    }
 
-    let asset_id = Uuid::now_v7();
+    if requests.len() > MAX_INSTRUMENTS_PER_REQUEST {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "cannot create more than 100 instruments",
+        ));
+    }
+
+    // Validate and normalize all requests first
+    let requests = requests
+        .into_iter()
+        .map(validate_instrument)
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if requests.is_empty() {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "at least one instrument is required",
+        ));
+    }
+
     let market_status = MarketStatus::Active;
 
-    let result = sqlx::query_as::<_, InstrumentResponse>(
-        r#"
-        INSERT INTO instruments(
-            id, 
-            symbol, 
-            asset_class, 
-            base_asset, 
-            quote_asset, 
-            price_scale, 
-            quantity_scale,
-            tick_size,
-            lot_size,
-            status
+    // Start transaction
+    let mut transaction = state.db.begin().await.map_err(|error| {
+        tracing::error!(
+            %error,
+            user_id = %user.user_id,
+            "failed to start transaction"
+        );
+
+        ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "failed to create assets")
+    })?;
+
+    let mut instruments = Vec::with_capacity(requests.len());
+
+    for request in requests {
+        let instrument_id = Uuid::now_v7();
+
+        let result = sqlx::query_as::<_, InstrumentResponse>(
+            r#"
+            INSERT INTO instruments (
+                id,
+                symbol,
+                asset_class,
+                base_asset,
+                quote_asset,
+                price_scale,
+                quantity_scale,
+                tick_size,
+                lot_size,
+                status
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING
+                id,
+                symbol,
+                asset_class,
+                base_asset,
+                quote_asset,
+                price_scale,
+                quantity_scale,
+                tick_size,
+                lot_size,
+                status,
+                created_at
+            "#,
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        "#,
-    )
-    .bind(asset_id)
-    .bind(request.symbol)
-    .bind(request.asset_class)
-    .bind(request.base_asset)
-    .bind(request.quote_asset)
-    .bind(request.price_scale)
-    .bind(request.quantity_scale)
-    .bind(request.tick_size)
-    .bind(request.lot_size)
-    .bind(market_status)
-    .fetch_one(&state.db)
-    .await;
+        .bind(instrument_id)
+        .bind(request.symbol)
+        .bind(request.asset_class)
+        .bind(request.base_asset)
+        .bind(request.quote_asset)
+        .bind(request.price_scale)
+        .bind(request.quantity_scale)
+        .bind(request.tick_size)
+        .bind(request.lot_size)
+        .bind(market_status)
+        .fetch_one(&mut *transaction)
+        .await;
 
-    match result {
-        Ok(instrument) => Ok((StatusCode::CREATED, Json(instrument))),
+        match result {
+            Ok(instrument) => {
+                instruments.push(instrument);
+            }
 
-        // UNIQUE(Asset Symbol) prevents duplicate Asset Symbols.
-        Err(sqlx::Error::Database(error)) if error.code().as_deref() == Some("23505") => {
-            Err(ApiError::new(StatusCode::CONFLICT, "Asset already exists"))
-        }
+            Err(sqlx::Error::Database(error)) if error.code().as_deref() == Some("23505") => {
+                return Err(ApiError::new(
+                    StatusCode::CONFLICT,
+                    "one or more assets already exist",
+                ));
+            }
 
-        Err(error) => {
-            tracing::error!(
-                %error,
-                user_id = %user.user_id,
-                "failed to create Asset"
-            );
+            Err(error) => {
+                tracing::error!(
+                    %error,
+                    user_id = %user.user_id,
+                    "failed to create assets"
+                );
 
-            Err(ApiError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "failed to create Asset",
-            ))
+                return Err(ApiError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "failed to create assets",
+                ));
+            }
         }
     }
+
+    // Commit only if every insert succeeded
+    transaction.commit().await.map_err(|error| {
+        tracing::error!(
+            %error,
+            user_id = %user.user_id,
+            "failed to commit asset creation"
+        );
+
+        ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "failed to create assets")
+    })?;
+
+    Ok((StatusCode::CREATED, Json(instruments)))
 }
 
 /// Normalizes and validates administrator-supplied instrument data.

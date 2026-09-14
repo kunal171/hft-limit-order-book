@@ -10,6 +10,7 @@ use axum::{
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
+use sqlx::PgPool;
 use tower::ServiceExt;
 
 const TEST_PASSWORD: &str = "correct-horse-battery-staple";
@@ -116,4 +117,19 @@ pub async fn read_json<T: DeserializeOwned>(response: Response) -> T {
         .expect("response body should be readable");
 
     serde_json::from_slice(&body).expect("response should contain valid JSON")
+}
+
+/// Creates a trader, promotes them for test setup, and returns an admin token.
+pub async fn admin_token(app: &Router, pool: &PgPool, email: &str) -> String {
+    signup(app, email).await;
+
+    // Production creates the first admin through bootstrap_admin.
+    // Direct promotion is used only inside isolated integration tests.
+    sqlx::query("UPDATE users SET role = 'admin' WHERE email = $1")
+        .bind(email)
+        .execute(pool)
+        .await
+        .expect("test user should be promoted to admin");
+
+    login(app, email).await
 }

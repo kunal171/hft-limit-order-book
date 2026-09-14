@@ -9,5 +9,5 @@ pub mod users;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/users", post(users::create_user))
-        .route("/instruments", post(instruments::create_asset))
+        .route("/instruments", post(instruments::create_instruments))
 }
