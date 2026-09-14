@@ -1,8 +1,8 @@
 use axum::routing::get;
-use axum_prometheus::PrometheusMetricLayer;
 use limit_order_book::{
     api::{router, state::AppState},
     db::connection::connect_db,
+    observability::metrics::initialize_prometheus,
 };
 use std::{error::Error, net::SocketAddr};
 use tokio::net::TcpListener;
@@ -21,8 +21,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let db = connect_db().await?;
     let state = AppState::new(db);
 
-    // Create HTTP metrics middleware and a handle used to render Prometheus data.
-    let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
+    // Initialize the global recorder and HTTP metrics middleware.
+    let (prometheus_layer, metric_handle) = initialize_prometheus();
 
     let app = router(state)
         .route(
