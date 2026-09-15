@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Load local environment variables before reading configuration.
     dotenvy::dotenv().ok();
 
-    //Initialize structured request logging
+    //Initialize structured request logging.
     tracing_subscriber::fmt()
         .with_env_filter("limit_order_book=debug,tower_http=debug")
         .init();
