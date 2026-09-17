@@ -1,4 +1,4 @@
-use axum::{Extension, Json, extract::State, http::StatusCode};
+use axum::{Extension, Json, extract::{Path, State}, http::StatusCode};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Type};
@@ -190,6 +190,90 @@ pub async fn create_instruments(
 
     Ok((StatusCode::CREATED, Json(instruments)))
 }
+
+
+/// Updates an existing instrument's definition.
+pub async fn update_instrument(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(instrument_id): Path<Uuid>,
+    Json(request): Json<CreateInstrumentRequest>,
+) -> Result<Json<InstrumentResponse>, ApiError> {
+    let request = validate_instrument(request)?;
+
+    let result = sqlx::query_as::<_, InstrumentResponse>(
+        r#"
+        UPDATE instruments
+        SET
+            symbol = $1,
+            asset_class = $2,
+            base_asset = $3,
+            quote_asset = $4,
+            price_scale = $5,
+            quantity_scale = $6,
+            tick_size = $7,
+            lot_size = $8
+        WHERE id = $9
+        RETURNING
+            id,
+            symbol,
+            asset_class,
+            base_asset,
+            quote_asset,
+            price_scale,
+            quantity_scale,
+            tick_size,
+            lot_size,
+            status,
+            created_at
+        "#,
+    )
+    .bind(request.symbol)
+    .bind(request.asset_class)
+    .bind(request.base_asset)
+    .bind(request.quote_asset)
+    .bind(request.price_scale)
+    .bind(request.quantity_scale)
+    .bind(request.tick_size)
+    .bind(request.lot_size)
+    .bind(instrument_id)
+    .fetch_optional(&state.db)
+    .await;
+
+    let instrument = match result {
+        Ok(Some(instrument)) => instrument,
+        Ok(None) => {
+            return Err(ApiError::new(
+                StatusCode::NOT_FOUND,
+                "instrument not found",
+            ));
+        }
+        Err(sqlx::Error::Database(error))
+            if error.code().as_deref() == Some("23505") =>
+        {
+            return Err(ApiError::new(
+                StatusCode::CONFLICT,
+                "an instrument with this symbol already exists",
+            ));
+        }
+        Err(error) => {
+            tracing::error!(
+                %error,
+                user_id = %user.user_id,
+                %instrument_id,
+                "failed to update instrument"
+            );
+
+            return Err(ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to update instrument",
+            ));
+        }
+    };
+
+    Ok(Json(instrument))
+}
+
 
 /// Normalizes and validates administrator-supplied instrument data.
 fn validate_instrument(

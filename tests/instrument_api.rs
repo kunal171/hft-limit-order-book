@@ -289,3 +289,71 @@ async fn instrument_batch_larger_than_limit_is_rejected(pool: PgPool) {
 
     assert_eq!(count, 0);
 }
+
+
+#[sqlx::test]
+async fn admin_updates_instrument(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+    let token = admin_token(&app, &pool, "update-admin@example.com").await;
+
+    let create_response = send(
+        &app,
+        json_request(
+            Method::POST,
+            "/admin/instruments",
+            json!([instrument_request("BTC-USDT", "BTC", "USDT")]),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    let created: Vec<CreatedInstrument> = read_json(create_response).await;
+    let instrument_id = created[0].id;
+
+    let response = send(
+        &app,
+        json_request(
+            Method::PATCH,
+            &format!("/admin/instruments/{instrument_id}"),
+            json!({
+                "symbol": "ETH-USDT",
+                "asset_class": "crypto",
+                "base_asset": "ETH",
+                "quote_asset": "USDT",
+                "price_scale": 4,
+                "quantity_scale": 8,
+                "tick_size": 1,
+                "lot_size": 100
+            }),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let updated: CreatedInstrument = read_json(response).await;
+    assert_eq!(updated.id, instrument_id);
+    assert_eq!(updated.symbol, "ETH-USDT");
+    assert_eq!(updated.status, "active");
+}
+
+
+#[sqlx::test]
+async fn updating_missing_instrument_returns_not_found(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+    let token = admin_token(&app, &pool, "missing-update-admin@example.com").await;
+
+    let response = send(
+        &app,
+        json_request(
+            Method::PATCH,
+            &format!("/admin/instruments/{}", Uuid::now_v7()),
+            instrument_request("ETH-USDT", "ETH", "USDT"),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
