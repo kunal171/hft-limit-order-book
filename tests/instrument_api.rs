@@ -357,3 +357,87 @@ async fn updating_missing_instrument_returns_not_found(pool: PgPool) {
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
+
+#[sqlx::test]
+async fn admin_can_pause_unpause_and_delist_instrument(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+    let token = admin_token(&app, &pool, "status-admin@example.com").await;
+
+    let create_response = send(
+        &app,
+        json_request(
+            Method::POST,
+            "/admin/instruments",
+            json!([instrument_request("BTC-USDT", "BTC", "USDT")]),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    let created: Vec<CreatedInstrument> = read_json(create_response).await;
+    let instrument_id = created[0].id;
+    let status_uri = format!("/admin/instruments/{instrument_id}/status");
+
+    for (status, expected) in [("paused", "paused"), ("active", "active"), ("delisted", "delisted")] {
+        let response = send(
+            &app,
+            json_request(
+                Method::PATCH,
+                &status_uri,
+                json!({ "status": status }),
+                Some(&token),
+            ),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let instrument: CreatedInstrument = read_json(response).await;
+        assert_eq!(instrument.status, expected);
+    }
+}
+
+#[sqlx::test]
+async fn delisted_instrument_cannot_be_reactivated(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+    let token = admin_token(&app, &pool, "delisted-admin@example.com").await;
+
+    let create_response = send(
+        &app,
+        json_request(
+            Method::POST,
+            "/admin/instruments",
+            json!([instrument_request("ETH-USDT", "ETH", "USDT")]),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    let created: Vec<CreatedInstrument> = read_json(create_response).await;
+    let status_uri = format!("/admin/instruments/{}/status", created[0].id);
+
+    let delist_response = send(
+        &app,
+        json_request(
+            Method::PATCH,
+            &status_uri,
+            json!({ "status": "delisted" }),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    assert_eq!(delist_response.status(), StatusCode::OK);
+
+    let reactivate_response = send(
+        &app,
+        json_request(
+            Method::PATCH,
+            &status_uri,
+            json!({ "status": "active" }),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    assert_eq!(reactivate_response.status(), StatusCode::CONFLICT);
+}
