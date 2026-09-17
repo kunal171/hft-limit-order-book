@@ -19,7 +19,8 @@ pub enum AssetClass {
 }
 
 /// Trading states supported by the PostgreSQL market_status enum.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
 #[serde(rename_all = "lowercase")]
 #[sqlx(type_name = "market_status", rename_all = "lowercase")]
 pub enum MarketStatus {
@@ -56,6 +57,12 @@ pub struct InstrumentResponse {
     pub lot_size: i64,
     pub status: MarketStatus,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateInstrumentStatusRequest {
+    pub status: MarketStatus,
 }
 
 /// Creates multiple instruments atomically.
