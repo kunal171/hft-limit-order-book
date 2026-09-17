@@ -14,4 +14,8 @@ pub fn router() -> Router<AppState> {
             "/instruments/{instrument_id}",
             patch(instruments::update_instrument),
         )
+        .route(
+            "/instruments/{instrument_id}/status",
+            patch(instruments::update_instrument_status),
+        )
 }

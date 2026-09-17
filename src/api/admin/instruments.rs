@@ -282,6 +282,124 @@ pub async fn update_instrument(
 }
 
 
+pub async fn update_instrument_status(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(instrument_id): Path<Uuid>,
+    Json(request): Json<UpdateInstrumentStatusRequest>,
+) -> Result<Json<InstrumentResponse>, ApiError> {
+    let mut transaction = state.db.begin().await.map_err(|error| {
+        tracing::error!(
+            %error,
+            user_id = %user.user_id,
+            %instrument_id,
+            "failed to start instrument status transaction"
+        );
+
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to update instrument status",
+        )
+    })?;
+
+    let current_status = sqlx::query_scalar::<_, MarketStatus>(
+        r#"
+        SELECT status
+        FROM instruments
+        WHERE id = $1
+        FOR UPDATE
+        "#,
+    )
+    .bind(instrument_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(|error| {
+        tracing::error!(
+            %error,
+            user_id = %user.user_id,
+            %instrument_id,
+            "failed to read instrument status"
+        );
+
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to update instrument status",
+        )
+    })?
+    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "instrument not found"))?;
+
+    let valid_transition = matches!(
+        (current_status, request.status),
+        (MarketStatus::Active, MarketStatus::Paused)
+            | (MarketStatus::Paused, MarketStatus::Active)
+            | (MarketStatus::Active, MarketStatus::Delisted)
+            | (MarketStatus::Paused, MarketStatus::Delisted)
+            | (MarketStatus::Active, MarketStatus::Active)
+            | (MarketStatus::Paused, MarketStatus::Paused)
+            | (MarketStatus::Delisted, MarketStatus::Delisted)
+    );
+
+    if !valid_transition {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            "invalid instrument status transition",
+        ));
+    }
+
+    let instrument = sqlx::query_as::<_, InstrumentResponse>(
+        r#"
+        UPDATE instruments
+        SET status = $1
+        WHERE id = $2
+        RETURNING
+            id,
+            symbol,
+            asset_class,
+            base_asset,
+            quote_asset,
+            price_scale,
+            quantity_scale,
+            tick_size,
+            lot_size,
+            status,
+            created_at
+        "#,
+    )
+    .bind(request.status)
+    .bind(instrument_id)
+    .fetch_one(&mut *transaction)
+    .await
+    .map_err(|error| {
+        tracing::error!(
+            %error,
+            user_id = %user.user_id,
+            %instrument_id,
+            "failed to update instrument status"
+        );
+
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to update instrument status",
+        )
+    })?;
+
+    transaction.commit().await.map_err(|error| {
+        tracing::error!(
+            %error,
+            user_id = %user.user_id,
+            %instrument_id,
+            "failed to commit instrument status update"
+        );
+
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to update instrument status",
+        )
+    })?;
+
+    Ok(Json(instrument))
+}
+
 /// Normalizes and validates administrator-supplied instrument data.
 fn validate_instrument(
     mut request: CreateInstrumentRequest,
