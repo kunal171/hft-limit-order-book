@@ -25,13 +25,18 @@ The current engine already keeps its active book in process memory:
 ```text
 bids              BTreeMap<Price, PriceLevel>
 asks              BTreeMap<Price, PriceLevel>
-orders            HashMap<OrderId, Order>
-order_locations   HashMap<OrderId, OrderLocation>
+arena             OrderArena (Vec of order nodes with reusable slots)
+order_slots       HashMap<OrderId, Slot>
+seen_order_ids    HashSet<OrderId>
 ```
 
 The `OrderBook` owns these collections. Their entries live in the Rust
-process's RAM while the engine is running. `BTreeMap` keeps prices sorted, each
-`PriceLevel` maintains FIFO order IDs, and the hash maps provide direct lookup.
+process's RAM while the engine is running. `BTreeMap` keeps prices sorted.
+Every resting order is a node in the arena, and each `PriceLevel` is a FIFO
+doubly linked list through those nodes (`head`, `tail`, cached
+`total_quantity`). `order_slots` gives direct lookup, so cancel and modify
+detach an order in O(1) without scanning its queue. `seen_order_ids` makes
+order ids single-use.
 
 The target architecture adds a dedicated engine runtime, command sequencing,
 durable journaling, and asynchronous event distribution around this core.

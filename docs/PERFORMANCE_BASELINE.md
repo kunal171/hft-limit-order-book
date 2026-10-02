@@ -12,6 +12,13 @@ measure first, optimize second
 Any future optimization should compare against this file before we decide
 whether the change actually helped.
 
+> **These numbers predate the arena order book.** They were measured on the
+> `VecDeque` + lazy-cancel design. The engine now stores resting orders in an
+> arena with a linked list per price level, so lazy cancels and stale queue ids
+> no longer exist. The sections below that discuss them describe the old
+> design. New results still need to be recorded from
+> `cargo bench --bench order_book_bench -- --baseline before-arena`.
+
 ## Latest Run
 
 ```text

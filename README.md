@@ -51,9 +51,12 @@ tests/        API integration tests (need PostgreSQL)
   match in arrival order. Trades execute at the resting order's price.
 - **Integer prices and quantities.** Values are `u64` ticks and units, never
   floats, so there is no rounding in financial logic.
-- **Storage.** Each side is a `BTreeMap<Price, PriceLevel>`; a level holds a
-  FIFO `VecDeque` of order ids and a cached total quantity. Orders live in a
-  `HashMap` keyed by id, with a second index for direct cancel lookup.
+- **Storage.** Each side is a `BTreeMap<Price, PriceLevel>`. Resting orders
+  live in one arena (a `Vec` with reusable slots), and each level is a FIFO
+  linked list through that arena plus a cached total quantity. A
+  `HashMap<OrderId, Slot>` finds any order directly, so cancel is O(1).
+- **Order ids are single-use.** An id that was ever accepted is rejected if it
+  is submitted again, even after the order was filled or cancelled.
 - **Events and replay.** The book records `OrderAccepted`, `OrderCancelled`,
   `OrderModified`, and `TradeExecuted`. Replaying the events rebuilds the same
   final snapshot. `EventMode` can be `Full`, `TradesOnly`, or `Disabled`.
