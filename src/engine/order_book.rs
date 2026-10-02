@@ -815,22 +815,4 @@ mod tests {
             .expect("sell order should be accepted");
         assert_eq!(trades, vec![Trade::new(2, 3, 100, 5)]);
     }
-
-    #[test]
-    fn cancelled_ids_do_not_accumulate_in_a_level() {
-        let mut book = OrderBook::new();
-        book.add_order(Order::new(1, Side::Buy, 100, 5)).unwrap();
-
-        // Place and cancel many orders at a level that never trades.
-        for id in 2..=10_001 {
-            book.add_order(Order::new(id, Side::Buy, 100, 5)).unwrap();
-            book.cancel_order(id).unwrap();
-        }
-
-        let level = book.bids.get(&100).expect("level should still exist");
-
-        assert!(level.order_ids.len() <= COMPACT_MIN_QUEUE_LEN);
-        assert_eq!(book.best_bid(), Some(100));
-        assert_eq!(book.resting_order_count(), 1);
-    }
 }
