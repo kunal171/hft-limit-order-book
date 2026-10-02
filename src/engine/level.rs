@@ -3,9 +3,6 @@
 //! The queue is a doubly linked list threaded through the arena nodes, so an
 //! order can be detached from any position without searching.
 
-// Nothing uses this until the order book is switched over.
-#![allow(dead_code)]
-
 use super::arena::{OrderArena, Slot};
 use crate::domain::Quantity;
 
