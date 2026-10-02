@@ -7,16 +7,19 @@ use limit_order_book::{
 use std::{error::Error, net::SocketAddr};
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
+use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // Load local environment variables before reading configuration.
     dotenvy::dotenv().ok();
 
-    //Initialize structured request logging.
-    tracing_subscriber::fmt()
-        .with_env_filter("limit_order_book=debug,tower_http=debug")
-        .init();
+    // Initialize structured request logging.
+    // RUST_LOG overrides the default, e.g. RUST_LOG=limit_order_book=trace.
+    let log_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("limit_order_book=debug,tower_http=debug"));
+
+    tracing_subscriber::fmt().with_env_filter(log_filter).init();
 
     let db = connect_db().await?;
     let state = AppState::new(db);
