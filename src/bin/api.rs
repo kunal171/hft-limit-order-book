@@ -16,8 +16,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Initialize structured request logging.
     // RUST_LOG overrides the default, e.g. RUST_LOG=limit_order_book=trace.
+    // `api` is this binary's own log target; without it the startup and
+    // shutdown messages below are filtered out.
     let log_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("limit_order_book=debug,tower_http=debug"));
+        .unwrap_or_else(|_| EnvFilter::new("api=debug,limit_order_book=debug,tower_http=debug"));
 
     tracing_subscriber::fmt().with_env_filter(log_filter).init();
 
@@ -57,6 +59,36 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     tracing::info!(%addr, "API server listening");
 
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
     Ok(())
+}
+
+/// Resolves when the process is asked to stop.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Ctrl+C handler should install");
+    };
+
+    // SIGTERM is what Docker and Kubernetes send to stop a container.
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("SIGTERM handler should install")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    tracing::info!("shutdown signal received, finishing in-flight requests");
 }
