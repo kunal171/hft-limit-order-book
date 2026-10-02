@@ -1,7 +1,7 @@
 mod common;
 
 use axum::http::{Method, StatusCode};
-use common::{admin_token, json_request, read_json, send};
+use common::{admin_token, empty_request, json_request, read_json, send};
 use limit_order_book::api::{router, state::AppState};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -526,4 +526,63 @@ async fn database_rejects_non_positive_tick_size(pool: PgPool) {
 
     // 23514 is PostgreSQL's check_violation.
     assert_eq!(code.as_deref(), Some("23514"));
+}
+
+#[sqlx::test]
+async fn trader_can_list_and_fetch_instruments(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+    let admin = admin_token(&app, &pool, "list-admin@example.com").await;
+
+    let created = send(
+        &app,
+        json_request(
+            Method::POST,
+            "/admin/instruments",
+            json!([
+                instrument_request("ETH-USDT", "ETH", "USDT"),
+                instrument_request("BTC-USDT", "BTC", "USDT"),
+            ]),
+            Some(&admin),
+        ),
+    )
+    .await;
+    assert_eq!(created.status(), StatusCode::CREATED);
+
+    signup(&app, "list-trader@example.com").await;
+    let trader = login(&app, "list-trader@example.com").await;
+
+    let listed = send(
+        &app,
+        empty_request(Method::GET, "/instruments", Some(&trader)),
+    )
+    .await;
+    assert_eq!(listed.status(), StatusCode::OK);
+
+    // The list is ordered by symbol, not by creation order.
+    let instruments: Vec<CreatedInstrument> = read_json(listed).await;
+    let symbols: Vec<&str> = instruments
+        .iter()
+        .map(|instrument| instrument.symbol.as_str())
+        .collect();
+    assert_eq!(symbols, vec!["BTC-USDT", "ETH-USDT"]);
+
+    let uri = format!("/instruments/{}", instruments[0].id);
+    let fetched = send(&app, empty_request(Method::GET, &uri, Some(&trader))).await;
+    assert_eq!(fetched.status(), StatusCode::OK);
+
+    let fetched: CreatedInstrument = read_json(fetched).await;
+    assert_eq!(fetched.symbol, "BTC-USDT");
+
+    let missing = format!("/instruments/{}", Uuid::now_v7());
+    let not_found = send(&app, empty_request(Method::GET, &missing, Some(&trader))).await;
+    assert_eq!(not_found.status(), StatusCode::NOT_FOUND);
+}
+
+#[sqlx::test]
+async fn listing_instruments_without_token_is_rejected(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+
+    let response = send(&app, empty_request(Method::GET, "/instruments", None)).await;
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
