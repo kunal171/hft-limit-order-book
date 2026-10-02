@@ -2,7 +2,7 @@ use crate::Quantity;
 use crate::domain::{BookEvent, BookSnapshot, Order, OrderId, Price, Side, Trade};
 use crate::engine::config::{EventMode, OrderBookConfig};
 use crate::error::OrderBookError;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OrderLocation {
@@ -27,6 +27,7 @@ pub struct OrderBook {
     pub(super) order_locations: HashMap<OrderId, OrderLocation>,
     pub(super) events: Vec<BookEvent>,
     pub(super) config: OrderBookConfig,
+    pub(super) seen_order_ids: HashSet<OrderId>,
 }
 
 impl OrderBook {
@@ -43,6 +44,7 @@ impl OrderBook {
             order_locations: HashMap::new(),
             events: Vec::new(),
             config,
+            seen_order_ids: HashSet::new(),
         }
     }
 
@@ -51,7 +53,9 @@ impl OrderBook {
         if order.remaining_qty == 0 {
             return Err(OrderBookError::ZeroQuantity);
         }
-        if self.orders.contains_key(&order.id) {
+
+        // `insert` returns false when the id was already in the set.
+        if !self.seen_order_ids.insert(order.id) {
             return Err(OrderBookError::DuplicateOrderId);
         }
 
@@ -788,5 +792,45 @@ mod tests {
                 BookEvent::OrderCancelled { order_id: 1 },
             ]
         );
+    }
+
+    #[test]
+    fn rejects_reuse_of_cancelled_order_id() {
+        let mut book = OrderBook::new();
+        book.add_order(Order::new(1, Side::Buy, 100, 5))
+            .expect("first order should be accepted");
+        book.add_order(Order::new(2, Side::Buy, 100, 5))
+            .expect("second order should be accepted");
+        book.cancel_order(1).expect("cancel should succeed");
+
+        // Id 1 was already used. Accepting it again would let it
+        // jump ahead of order 2 through the stale queue entry.
+        let result = book.add_order(Order::new(1, Side::Buy, 100, 5));
+
+        assert_eq!(result, Err(OrderBookError::DuplicateOrderId));
+
+        // Order 2 must still be first in line.
+        let trades = book
+            .add_order(Order::new(3, Side::Sell, 100, 5))
+            .expect("sell order should be accepted");
+        assert_eq!(trades, vec![Trade::new(2, 3, 100, 5)]);
+    }
+
+    #[test]
+    fn cancelled_ids_do_not_accumulate_in_a_level() {
+        let mut book = OrderBook::new();
+        book.add_order(Order::new(1, Side::Buy, 100, 5)).unwrap();
+
+        // Place and cancel many orders at a level that never trades.
+        for id in 2..=10_001 {
+            book.add_order(Order::new(id, Side::Buy, 100, 5)).unwrap();
+            book.cancel_order(id).unwrap();
+        }
+
+        let level = book.bids.get(&100).expect("level should still exist");
+
+        assert!(level.order_ids.len() <= COMPACT_MIN_QUEUE_LEN);
+        assert_eq!(book.best_bid(), Some(100));
+        assert_eq!(book.resting_order_count(), 1);
     }
 }
