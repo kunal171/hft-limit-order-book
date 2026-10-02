@@ -502,3 +502,28 @@ async fn trader_cannot_update_instrument_status(pool: PgPool) {
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
+
+#[sqlx::test]
+async fn database_rejects_non_positive_tick_size(pool: PgPool) {
+    // Insert directly, skipping handler validation.
+    let error = sqlx::query(
+        r#"
+        INSERT INTO instruments (
+            id, symbol, asset_class, base_asset, quote_asset,
+            price_scale, quantity_scale, tick_size, lot_size, status
+        )
+        VALUES ($1, 'BAD-USD', 'crypto', 'BAD', 'USD', 2, 6, 0, 1000, 'active')
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .execute(&pool)
+    .await
+    .expect_err("zero tick size should violate a check constraint");
+
+    let code = error
+        .as_database_error()
+        .and_then(|error| error.code().map(|code| code.to_string()));
+
+    // 23514 is PostgreSQL's check_violation.
+    assert_eq!(code.as_deref(), Some("23514"));
+}
