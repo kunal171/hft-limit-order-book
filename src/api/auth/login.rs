@@ -1,6 +1,6 @@
 use argon2::{
     Argon2,
-    password_hash::{PasswordVerifier, phc::PasswordHash},
+    password_hash::{PasswordHasher, PasswordVerifier, phc::PasswordHash},
 };
 use axum::{Json, extract::State, http::StatusCode};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -8,6 +8,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::FromRow;
+use std::sync::LazyLock;
 use tokio::task;
 use uuid::Uuid;
 
@@ -15,6 +16,15 @@ use crate::api::{error::ApiError, state::AppState};
 
 // A fixed duration is sufficient initially; configuration can come later.
 const SESSION_LIFETIME_HOURS: i64 = 12;
+
+/// Hash checked when the email is unknown, so that path costs the same as a
+/// real password check. Built with the same settings as real hashes.
+static DUMMY_PASSWORD_HASH: LazyLock<String> = LazyLock::new(|| {
+    Argon2::default()
+        .hash_password(b"dummy-password-for-unknown-emails")
+        .expect("dummy password hash should be computable")
+        .to_string()
+});
 
 /// Credentials accepted by POST /auth/login.
 #[derive(Debug, Deserialize)]
@@ -73,15 +83,20 @@ async fn find_login_user(state: &AppState, email: &str) -> Result<Option<LoginUs
 }
 
 /// Verifies a password without blocking a Tokio async worker.
-async fn verify_password(password: String, stored_hash: String) -> Result<bool, ApiError> {
+///
+/// With no stored hash the password is checked against a dummy hash and the
+/// result is always false, so unknown emails take as long as wrong passwords.
+async fn verify_password(password: String, stored_hash: Option<String>) -> Result<bool, ApiError> {
     let result = task::spawn_blocking(move || {
-        let parsed_hash = PasswordHash::new(&stored_hash)?;
+        let user_exists = stored_hash.is_some();
+        let hash = stored_hash.unwrap_or_else(|| DUMMY_PASSWORD_HASH.clone());
+        let parsed_hash = PasswordHash::new(&hash)?;
 
-        Ok::<bool, argon2::password_hash::Error>(
-            Argon2::default()
-                .verify_password(password.as_bytes(), &parsed_hash)
-                .is_ok(),
-        )
+        let matches = Argon2::default()
+            .verify_password(password.as_bytes(), &parsed_hash)
+            .is_ok();
+
+        Ok::<bool, argon2::password_hash::Error>(matches && user_exists)
     })
     .await;
 
@@ -147,20 +162,19 @@ pub async fn login(
         ));
     }
 
-    let user = find_login_user(&state, &email).await?.ok_or_else(|| {
-        // Do not reveal whether the email address exists.
-        ApiError::new(StatusCode::UNAUTHORIZED, "invalid email or password")
-    })?;
+    let user = find_login_user(&state, &email).await?;
+    let stored_hash = user.as_ref().map(|user| user.password_hash.clone());
 
-    let password_matches = verify_password(request.password, user.password_hash).await?;
+    let password_matches = verify_password(request.password, stored_hash).await?;
 
-    if !password_matches {
-        // Use the same error as an unknown email to prevent account discovery.
+    // Unknown email and wrong password do the same work and return the same
+    // error, so neither the message nor the response time reveals which it was.
+    let Some(user) = user.filter(|_| password_matches) else {
         return Err(ApiError::new(
             StatusCode::UNAUTHORIZED,
             "invalid email or password",
         ));
-    }
+    };
 
     // Only reveal account status after valid credentials were supplied.
     if user.status != "active" {
