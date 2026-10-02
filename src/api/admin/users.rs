@@ -1,27 +1,7 @@
-use crate::api::{error::ApiError, state::AppState};
+use crate::api::{auth::role::UserRole, error::ApiError, state::AppState};
 use axum::{Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-
-/// Allowed roles in the users table.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum UserRole {
-    Admin,
-    Trader,
-    System,
-}
-
-impl UserRole {
-    /// Converts the Rust enum into the value stored in PostgreSQL.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Admin => "admin",
-            Self::Trader => "trader",
-            Self::System => "system",
-        }
-    }
-}
 
 /// JSON accepted by POST /admin/users.
 #[derive(Debug, Deserialize)]

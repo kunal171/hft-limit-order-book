@@ -7,6 +7,7 @@ use crate::api::state::AppState;
 
 pub mod login;
 pub mod logout;
+pub mod role;
 pub mod sessions;
 pub mod signup;
 
