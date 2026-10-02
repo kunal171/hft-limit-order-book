@@ -186,7 +186,7 @@ pub async fn login(
     .bind(session_id)
     .bind(user.id)
     .bind(hash)
-    .bind(&expires_at)
+    .bind(expires_at)
     .execute(&state.db)
     .await
     .map_err(|error| {

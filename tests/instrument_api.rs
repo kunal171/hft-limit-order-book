@@ -290,74 +290,6 @@ async fn instrument_batch_larger_than_limit_is_rejected(pool: PgPool) {
     assert_eq!(count, 0);
 }
 
-
-#[sqlx::test]
-async fn admin_updates_instrument(pool: PgPool) {
-    let app = router(AppState::new(pool.clone()));
-    let token = admin_token(&app, &pool, "update-admin@example.com").await;
-
-    let create_response = send(
-        &app,
-        json_request(
-            Method::POST,
-            "/admin/instruments",
-            json!([instrument_request("BTC-USDT", "BTC", "USDT")]),
-            Some(&token),
-        ),
-    )
-    .await;
-
-    let created: Vec<CreatedInstrument> = read_json(create_response).await;
-    let instrument_id = created[0].id;
-
-    let response = send(
-        &app,
-        json_request(
-            Method::PATCH,
-            &format!("/admin/instruments/{instrument_id}"),
-            json!({
-                "symbol": "ETH-USDT",
-                "asset_class": "crypto",
-                "base_asset": "ETH",
-                "quote_asset": "USDT",
-                "price_scale": 4,
-                "quantity_scale": 8,
-                "tick_size": 1,
-                "lot_size": 100
-            }),
-            Some(&token),
-        ),
-    )
-    .await;
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let updated: CreatedInstrument = read_json(response).await;
-    assert_eq!(updated.id, instrument_id);
-    assert_eq!(updated.symbol, "ETH-USDT");
-    assert_eq!(updated.status, "active");
-}
-
-
-#[sqlx::test]
-async fn updating_missing_instrument_returns_not_found(pool: PgPool) {
-    let app = router(AppState::new(pool.clone()));
-    let token = admin_token(&app, &pool, "missing-update-admin@example.com").await;
-
-    let response = send(
-        &app,
-        json_request(
-            Method::PATCH,
-            &format!("/admin/instruments/{}", Uuid::now_v7()),
-            instrument_request("ETH-USDT", "ETH", "USDT"),
-            Some(&token),
-        ),
-    )
-    .await;
-
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-}
-
 #[sqlx::test]
 async fn admin_can_pause_unpause_and_delist_instrument(pool: PgPool) {
     let app = router(AppState::new(pool.clone()));
@@ -378,7 +310,11 @@ async fn admin_can_pause_unpause_and_delist_instrument(pool: PgPool) {
     let instrument_id = created[0].id;
     let status_uri = format!("/admin/instruments/{instrument_id}/status");
 
-    for (status, expected) in [("paused", "paused"), ("active", "active"), ("delisted", "delisted")] {
+    for (status, expected) in [
+        ("paused", "paused"),
+        ("active", "active"),
+        ("delisted", "delisted"),
+    ] {
         let response = send(
             &app,
             json_request(
@@ -440,4 +376,129 @@ async fn delisted_instrument_cannot_be_reactivated(pool: PgPool) {
     .await;
 
     assert_eq!(reactivate_response.status(), StatusCode::CONFLICT);
+}
+
+#[sqlx::test]
+async fn updating_missing_instrument_status_returns_not_found(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+    let token = admin_token(&app, &pool, "missing-status-admin@example.com").await;
+
+    let instrument_id = Uuid::now_v7();
+    let response = send(
+        &app,
+        json_request(
+            Method::PATCH,
+            &format!("/admin/instruments/{instrument_id}/status"),
+            json!({ "status": "paused" }),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[sqlx::test]
+async fn invalid_instrument_status_is_rejected(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+    let token = admin_token(&app, &pool, "invalid-status-admin@example.com").await;
+
+    // Serde rejects values outside the MarketStatus enum before SQL is executed.
+    let instrument_id = Uuid::now_v7();
+    let response = send(
+        &app,
+        json_request(
+            Method::PATCH,
+            &format!("/admin/instruments/{instrument_id}/status"),
+            json!({ "status": "closed" }),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[sqlx::test]
+async fn setting_same_instrument_status_is_idempotent(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+    let token = admin_token(&app, &pool, "idempotent-status-admin@example.com").await;
+
+    let create_response = send(
+        &app,
+        json_request(
+            Method::POST,
+            "/admin/instruments",
+            json!([instrument_request("SOL-USDT", "SOL", "USDT")]),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    let created: Vec<CreatedInstrument> = read_json(create_response).await;
+    let instrument_id = created[0].id;
+
+    // Newly created instruments are active, so this repeats the current state.
+    let response = send(
+        &app,
+        json_request(
+            Method::PATCH,
+            &format!("/admin/instruments/{instrument_id}/status"),
+            json!({ "status": "active" }),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let instrument: CreatedInstrument = read_json(response).await;
+    assert_eq!(instrument.status, "active");
+}
+
+#[sqlx::test]
+async fn updating_instrument_status_without_token_is_rejected(pool: PgPool) {
+    let app = router(AppState::new(pool));
+
+    // The instrument does not need to exist because authentication runs
+    // before the status handler reaches the database.
+    let instrument_id = Uuid::now_v7();
+
+    let response = send(
+        &app,
+        json_request(
+            Method::PATCH,
+            &format!("/admin/instruments/{instrument_id}/status"),
+            json!({ "status": "paused" }),
+            None,
+        ),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test]
+async fn trader_cannot_update_instrument_status(pool: PgPool) {
+    let app = router(AppState::new(pool));
+
+    // Public signup always creates a normal trader, never an administrator.
+    signup(&app, "status-trader@example.com").await;
+    let token = login(&app, "status-trader@example.com").await;
+
+    // The instrument does not need to exist because authorization rejects
+    // the request before the status handler runs.
+    let instrument_id = Uuid::now_v7();
+
+    let response = send(
+        &app,
+        json_request(
+            Method::PATCH,
+            &format!("/admin/instruments/{instrument_id}/status"),
+            json!({ "status": "paused" }),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }

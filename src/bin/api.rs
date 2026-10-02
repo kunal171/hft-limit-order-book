@@ -42,8 +42,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
         // Keep the existing structured request logging.
         .layer(TraceLayer::new_for_http());
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    // Read the bind address from the environment so development,
+    // Docker, and production can use different network configurations.
+    let addr: SocketAddr = std::env::var("API_ADDR")
+        // Use a secure local-only default when API_ADDR is missing.
+        .unwrap_or_else(|_| "127.0.0.1:3000".to_string())
+        // Convert the string into a strongly typed socket address.
+        .parse()?;
+
     let listener = TcpListener::bind(addr).await?;
+
 
     tracing::info!(%addr, "API server listening");
 

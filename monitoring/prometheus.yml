@@ -1,0 +1,11 @@
+global:
+  # Prometheus requests /metrics every five seconds.
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: "limit-order-book-api"
+
+    static_configs:
+      # Prometheus runs inside Docker while the Rust API runs on the host.
+      - targets:
+          - "host.docker.internal:3000"
