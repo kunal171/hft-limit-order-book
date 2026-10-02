@@ -97,6 +97,10 @@ DATABASE_URL=postgres://postgres:postgres@localhost:5433/limit_order_book
 API_ADDR=127.0.0.1:3000
 ```
 
+Set `RUST_LOG` to change log levels for one run, for example
+`RUST_LOG=limit_order_book=trace cargo run --bin api`. The server finishes
+in-flight requests before exiting on Ctrl-C or `SIGTERM`.
+
 | Route | Access | Purpose |
 |---|---|---|
 | `GET /health` | Public | API and database check |
@@ -106,6 +110,7 @@ API_ADDR=127.0.0.1:3000
 | `POST /auth/logout` | Bearer token | Revoke the session |
 | `GET /auth/me` | Bearer token | Current user and role |
 | `POST /accounts`, `GET /accounts` | Bearer token | Create and list your own accounts |
+| `GET /instruments`, `GET /instruments/{id}` | Bearer token | List instruments, or fetch one |
 | `POST /admin/users` | Admin | Create a user |
 | `POST /admin/instruments` | Admin | Create up to 100 instruments atomically |
 | `PATCH /admin/instruments/{id}/status` | Admin | Pause, unpause, or delist |
