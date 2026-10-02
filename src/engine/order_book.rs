@@ -7,10 +7,10 @@ use super::arena::{OrderArena, Slot};
 use super::level::PriceLevel;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-/// A simple price-time priority limit order book.
+/// A price-time priority limit order book.
 ///
-/// `BTreeMap` keeps price levels sorted.
-/// `VecDeque` preserves FIFO order inside each price level.
+/// `BTreeMap` keeps price levels sorted. Resting orders live in an arena,
+/// and each price level is a FIFO linked list through that arena.
 #[derive(Debug, Default)]
 pub struct OrderBook {
     pub(super) bids: BTreeMap<Price, PriceLevel>,
@@ -66,10 +66,12 @@ impl OrderBook {
         Ok(trades)
     }
 
+    /// Highest resting buy price.
     pub fn best_bid(&self) -> Option<Price> {
         self.bids.keys().next_back().copied()
     }
 
+    /// Lowest resting sell price.
     pub fn best_ask(&self) -> Option<Price> {
         self.asks.keys().next().copied()
     }

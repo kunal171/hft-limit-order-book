@@ -3,9 +3,6 @@
 //! Orders live in one `Vec` and are referred to by index. Freed slots are
 //! reused, so a warmed-up book does not allocate.
 
-// Nothing uses the arena until the order book is switched over.
-#![allow(dead_code)]
-
 use crate::domain::Order;
 
 /// Position of a resting order inside the arena.
