@@ -5,6 +5,7 @@
 
 mod arena;
 mod config;
+mod level;
 mod matching;
 mod order_book;
 

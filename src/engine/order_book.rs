@@ -2,19 +2,11 @@ use crate::Quantity;
 use crate::domain::{BookEvent, BookSnapshot, Order, OrderId, Price, Side, Trade};
 use crate::engine::config::{EventMode, OrderBookConfig};
 use crate::error::OrderBookError;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct OrderLocation {
-    pub side: Side,
-    pub price: Price,
-}
+use super::arena::{OrderArena, Slot};
+use super::level::PriceLevel;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PriceLevel {
-    pub order_ids: VecDeque<OrderId>,
-    pub total_quantity: Quantity,
-}
 /// A simple price-time priority limit order book.
 ///
 /// `BTreeMap` keeps price levels sorted.
@@ -23,8 +15,9 @@ pub struct PriceLevel {
 pub struct OrderBook {
     pub(super) bids: BTreeMap<Price, PriceLevel>,
     pub(super) asks: BTreeMap<Price, PriceLevel>,
-    pub(super) orders: HashMap<OrderId, Order>,
-    pub(super) order_locations: HashMap<OrderId, OrderLocation>,
+    pub(super) arena: OrderArena,
+    /// Where each resting order lives in the arena.
+    pub(super) order_slots: HashMap<OrderId, Slot>,
     pub(super) events: Vec<BookEvent>,
     pub(super) config: OrderBookConfig,
     pub(super) seen_order_ids: HashSet<OrderId>,
@@ -40,8 +33,8 @@ impl OrderBook {
         Self {
             bids: BTreeMap::new(),
             asks: BTreeMap::new(),
-            orders: HashMap::new(),
-            order_locations: HashMap::new(),
+            arena: OrderArena::default(),
+            order_slots: HashMap::new(),
             events: Vec::new(),
             config,
             seen_order_ids: HashSet::new(),
@@ -73,55 +66,48 @@ impl OrderBook {
         Ok(trades)
     }
 
-    /// Highest resting buy price.
     pub fn best_bid(&self) -> Option<Price> {
-        self.bids
-            .iter()
-            .rev()
-            .find(|(_, level)| level.total_quantity > 0)
-            .map(|(price, _)| *price)
+        self.bids.keys().next_back().copied()
     }
 
     pub fn best_ask(&self) -> Option<Price> {
-        self.asks
-            .iter()
-            .find(|(_, level)| level.total_quantity > 0)
-            .map(|(price, _)| *price)
+        self.asks.keys().next().copied()
     }
 
     /// Number of resting orders across both sides.
     pub fn resting_order_count(&self) -> usize {
-        self.orders.len()
+        self.arena.len()
     }
 
     // Cancel the order
     pub fn cancel_order(&mut self, order_id: OrderId) -> Result<(), OrderBookError> {
-        let location = self
-            .order_locations
-            .remove(&order_id)
+        self.remove_order_by_id(order_id)
             .ok_or(OrderBookError::UnknownOrderId)?;
-
-        let order = self
-            .orders
-            .remove(&order_id)
-            .ok_or(OrderBookError::UnknownOrderId)?;
-
-        // Decrease quantity
-        self.decrease_level_quantity(location, order.remaining_qty);
-        //record cancel
         self.record_order_cancelled(order_id);
 
         Ok(())
     }
 
+    /// Detach a resting order from its level and free its slot.
     fn remove_order_by_id(&mut self, order_id: OrderId) -> Option<Order> {
-        let location = self.order_locations.remove(&order_id)?;
-        let order = self.orders.remove(&order_id)?;
+        let slot = self.order_slots.remove(&order_id)?;
+        let node = self.arena.get(slot);
+        let (side, price) = (node.order.side, node.order.price);
 
-        self.decrease_level_quantity(location, order.remaining_qty);
-        self.remove_order_id_from_level(location, order_id);
+        let levels = match side {
+            Side::Buy => &mut self.bids,
+            Side::Sell => &mut self.asks,
+        };
 
-        Some(order)
+        if let Some(level) = levels.get_mut(&price) {
+            level.unlink(&mut self.arena, slot);
+
+            if level.is_empty() {
+                levels.remove(&price);
+            }
+        }
+
+        Some(self.arena.remove(slot))
     }
 
     pub fn modify_order(
@@ -167,98 +153,47 @@ impl OrderBook {
             .bids
             .iter()
             .rev()
-            .filter_map(|(price, order_ids)| {
-                let orders: Vec<Order> = order_ids
-                    .order_ids
-                    .iter()
-                    .filter_map(|id| self.orders.get(id).cloned())
-                    .collect();
-                if orders.is_empty() {
-                    None
-                } else {
-                    Some((*price, orders))
-                }
-            })
+            .map(|(price, level)| (*price, self.level_orders(level)))
             .collect();
 
         let asks = self
             .asks
             .iter()
-            .filter_map(|(price, order_ids)| {
-                let orders: Vec<Order> = order_ids
-                    .order_ids
-                    .iter()
-                    .filter_map(|id| self.orders.get(id).cloned())
-                    .collect();
-                if orders.is_empty() {
-                    None
-                } else {
-                    Some((*price, orders))
-                }
-            })
+            .map(|(price, level)| (*price, self.level_orders(level)))
             .collect();
 
         BookSnapshot { bids, asks }
     }
 
-    pub fn rest_order(&mut self, order: Order) {
-        let order_id = order.id;
-        let side = order.side;
-        let price = order.price;
+    /// Copy one level's orders in queue order.
+    fn level_orders(&self, level: &PriceLevel) -> Vec<Order> {
+        let mut orders = Vec::new();
+        let mut cursor = level.head;
+
+        while let Some(slot) = cursor {
+            let node = self.arena.get(slot);
+            orders.push(node.order.clone());
+            cursor = node.next;
+        }
+
+        orders
+    }
+
+    pub(super) fn rest_order(&mut self, order: Order) {
+        let (order_id, side, price) = (order.id, order.side, order.price);
+        let slot = self.arena.insert(order);
 
         let levels = match side {
             Side::Buy => &mut self.bids,
             Side::Sell => &mut self.asks,
         };
 
-        let level = levels.entry(price).or_insert_with(|| PriceLevel {
-            order_ids: VecDeque::new(),
-            total_quantity: 0,
-        });
+        levels
+            .entry(price)
+            .or_default()
+            .push_back(&mut self.arena, slot);
 
-        level.order_ids.push_back(order_id);
-        level.total_quantity += order.remaining_qty;
-
-        self.order_locations
-            .insert(order_id, OrderLocation { side, price });
-
-        self.orders.insert(order_id, order);
-    }
-
-    fn remove_order_id_from_level(&mut self, location: OrderLocation, order_id: OrderId) {
-        let levels = match location.side {
-            Side::Buy => &mut self.bids,
-            Side::Sell => &mut self.asks,
-        };
-
-        if let Some(level) = levels.get_mut(&location.price) {
-            if let Some(index) = level.order_ids.iter().position(|id| *id == order_id) {
-                level.order_ids.remove(index);
-            }
-
-            if level.order_ids.is_empty() {
-                levels.remove(&location.price);
-            }
-        }
-    }
-
-    fn decrease_level_quantity(&mut self, location: OrderLocation, quantity: Quantity) {
-        let levels = match location.side {
-            Side::Buy => &mut self.bids,
-            Side::Sell => &mut self.asks,
-        };
-
-        let should_remove_level = if let Some(level) = levels.get_mut(&location.price) {
-            debug_assert!(level.total_quantity >= quantity);
-            level.total_quantity -= quantity;
-            level.total_quantity == 0
-        } else {
-            false
-        };
-
-        if should_remove_level {
-            levels.remove(&location.price);
-        }
+        self.order_slots.insert(order_id, slot);
     }
 
     fn record_order_accepted(&mut self, order: &Order) {
