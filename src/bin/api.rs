@@ -52,7 +52,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let listener = TcpListener::bind(addr).await?;
 
-
     tracing::info!(%addr, "API server listening");
 
     axum::serve(listener, app).await?;

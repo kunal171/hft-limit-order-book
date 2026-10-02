@@ -1,762 +1,135 @@
 # HFT-Style Limit Order Book
 
-A Rust HFT-style limit order book and market-systems lab focused on deterministic
-price-time matching, measurable tail latency, replayable state, and a
-PostgreSQL-backed trading control plane.
+A Rust limit order book and market-systems lab: deterministic price-time
+matching, replayable state, measured latency, and a PostgreSQL-backed trading
+control plane.
 
-The project is being built as an HFT systems exercise, not presented as
-production-ready exchange infrastructure. Its central approach is a
-single-writer matching engine that owns the live order book in memory, with
-networking, databases, Kafka, AI, and orchestration kept outside the matching
-hot path.
+This is a learning project, not production exchange infrastructure. The design
+goal is a single-writer matching engine that owns the live book in memory, with
+networking, databases, and analytics kept outside the matching hot path.
 
-The matching engine stays in memory and keeps database and workflow operations
-outside its hot path. Around that core, the project provides simulation,
-metrics, replay, Criterion benchmarks, configurable event recording, Windmill
-automation, and an evolving Axum/SQLx backend for users, accounts, instruments,
-and durable market data.
+## Status
 
-## Current Status
+| Part | State |
+|---|---|
+| Matching engine (add, cancel, modify, events, replay) | Done |
+| Simulator, metrics, Criterion benchmarks | Done |
+| HTTP API: auth, sessions, accounts, admin instruments | Done |
+| Observability: Prometheus metrics | In progress |
+| API connected to the engine (order entry) | Not started |
 
-Current phase:
+The engine and the API are currently two separate halves. Wiring them together
+through a sequenced single-writer runtime is the next major phase; see
+[docs/HFT_ROADMAP.md](docs/HFT_ROADMAP.md).
 
-```text
-Phase 11: measured in-memory engine and hot-path data-structure work complete
-Phase 12: PostgreSQL control plane and trading API in progress
-Current slice: authentication, accounts, and admin instrument creation complete
-Next: reference/oracle pricing for risk checks and analytics
-```
-
-Windmill orchestration is operational. The deterministic AI analysis foundation
-is documented and intentionally paused while the HFT and backend layers mature.
-
-Implemented so far:
-
-```text
-price-time priority matching
-limit buy and sell orders
-partial fills and full fills
-best bid and best ask
-trade generation
-zero quantity validation
-duplicate active order id validation
-cancel resting orders
-modify resting orders
-active order side index
-order location index for direct cancellation lookup
-lazy cancellation for deep price levels
-cached active quantity per price level
-book snapshots
-event log
-full, trades-only, and disabled event modes
-event replay
-save and load event streams as JSON
-predefined simulator scenarios
-CLI runner for scenarios
-JSON simulator output
-book metrics
-trade metrics
-order book imbalance
-deterministic two-sided synthetic order generation
-deterministic crossing synthetic order generation
-configurable synthetic order count
-Criterion benchmark suite
-synthetic workload benchmarks
-hot-path operation benchmarks
-run artifact output directory
-release-friendly simulation wrapper script
-auto timestamped run directories
-Windmill manual run verified
-Windmill scheduled run verified
-deterministic AI analysis script
-combined run-and-analyze wrapper
-PostgreSQL development environment
-SQLx connection pool
-instrument, user, account, and role migrations
-Axum API binary with tracing
-database-aware health endpoint
-password credentials stored as Argon2 hashes
-one-time administrator bootstrap command
-public trader signup with server-controlled roles
-PostgreSQL-backed login sessions
-256-bit bearer tokens with only SHA-256 hashes stored
-authenticated account creation and owner-scoped listing
-atomic administrator-managed instrument batch creation
-instrument authorization, validation, conflict, and rollback tests
-```
-
-## HFT Approach
-
-The matching engine follows this flow:
-
-```text
-incoming order
--> gateway decode and pre-trade validation
--> ordered command
--> match against the opposite side
--> emit trades
--> rest any leftover quantity
--> emit a sequenced execution result
-```
-
-The active book is held in Rust-owned `BTreeMap`, `HashMap`, and `VecDeque`
-collections in process memory. A dedicated single-writer thread will own each
-book shard, avoiding a shared `Arc<Mutex<OrderBook>>` design.
-
-RAM provides fast live state but not crash recovery. The target durability
-model is an append-only sequenced journal plus periodic snapshots. Kafka then
-publishes journaled events asynchronously to PostgreSQL projections, metrics,
-and later pgvector feature analysis.
-
-```text
-gateway -> bounded queue -> single-writer engine -> in-memory book
-                                              -> durable journal
-                                              -> execution response
-
-journal -> Kafka -> PostgreSQL / metrics / pgvector / research
-```
-
-Canonical orders and executions are never silently dropped. Derived metrics and
-AI features may be recomputed from the journal. All queues are bounded so
-overload becomes an explicit rejection or safety halt instead of uncontrolled
-memory growth.
-
-The complete current and target design is documented in
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-
-Current executable, API, authentication, database, matching, simulation, and
-replay flows are diagrammed in
-[`docs/CURRENT_ARCHITECTURE_FLOWCHARTS.md`](docs/CURRENT_ARCHITECTURE_FLOWCHARTS.md).
-The editable high-level design is available as
-[`docs/diagrams/current-system-hld.drawio`](docs/diagrams/current-system-hld.drawio).
-
-AI integration remains paused until command sequencing, the single-writer
-runtime, durability, and hot-path latency measurements are in place.
-
-## Architecture
+## Layout
 
 ```text
 src/
-  domain/
-    event.rs        BookEvent output stream
-    order.rs        Order model
-    snapshot.rs     Serializable book snapshot
-    trade.rs        Trade model
-    types.rs        OrderId, Price, Quantity, Side
+  domain/         Order, Trade, BookEvent, BookSnapshot, Side, integer Price/Quantity
+  engine/         OrderBook API (order_book.rs) and price-time matching (matching.rs)
+  replay/         Rebuild a book from events; save/load events as JSON
+  simulator/      Predefined scenarios, deterministic generators, scenario runner
+  metrics/        Book metrics (spread, mid, depth, imbalance) and trade metrics (VWAP)
+  api/            Axum routes: auth, accounts, admin, health
+  db/             PostgreSQL connection pool
+  observability/  Prometheus recorder and HTTP metrics layer
+  main.rs         Simulator CLI
+  bin/api.rs              HTTP API server
+  bin/bootstrap_admin.rs  One-time first administrator creation
 
-  engine/
-    order_book.rs   Public OrderBook API and tests
-    matching.rs     Private price-time matching logic
-
-  metrics/
-    book_metrics.rs   Spread, mid price, depth, levels, imbalance
-    trade_metrics.rs  Volume, notional, last trade price, VWAP
-
-  replay/
-    persistence.rs  Save/load events as JSON
-    replay.rs       Rebuild book state from events
-
-  simulator/
-    generator.rs    Deterministic synthetic order generators
-    scenario.rs     ScenarioCommand input enum
-    scenarios.rs    Predefined market scenarios
-    runner.rs       Runs scenario commands against a fresh book
-
-  api/
-    auth/           Public signup and login operations
-    admin/          Admin-facing user and market operations
-    health.rs       API and PostgreSQL health check
-    state.rs        Shared Axum application state
-
-  db/
-    connection.rs   PostgreSQL connection pool setup
-
-  error.rs          OrderBookError
-  lib.rs            Library exports
-  main.rs           CLI demo/simulator entrypoint
-
-  bin/
-    api.rs              Axum API entrypoint
-    bootstrap_admin.rs  One-time initial administrator creation
-
-benches/
-  order_book_bench.rs  Criterion benchmarks for workloads and hot paths
-
-migrations/             SQLx PostgreSQL schema migrations
-docker-compose.yml      Local PostgreSQL service
-
-scripts/
-  run_simulation.sh    Release-friendly wrapper for orchestration tools
-  analyze_run.sh       Runs deterministic analysis for one run directory
-  run_and_analyze.sh   Runs simulation, analysis, and prints clean JSON
-
-ai/
-  analyze_run.py       Reads run artifacts and writes analysis.md
-  README.md            AI module scope and usage
+benches/      Criterion benchmarks
+migrations/   SQLx PostgreSQL migrations
+monitoring/   Prometheus scrape configuration
+scripts/, ai/ Run wrappers and deterministic run analysis (paused)
+tests/        API integration tests (need PostgreSQL)
 ```
 
-The public library exports common types and helpers from `lib.rs`, so users can
-write:
+## How the engine works
 
-```rust
-use limit_order_book::{
-    calculate_book_metrics, calculate_trade_metrics, Order, OrderBook, Side,
-};
-```
+- **Price-time priority.** Better price matches first; orders at the same price
+  match in arrival order. Trades execute at the resting order's price.
+- **Integer prices and quantities.** Values are `u64` ticks and units, never
+  floats, so there is no rounding in financial logic.
+- **Storage.** Each side is a `BTreeMap<Price, PriceLevel>`; a level holds a
+  FIFO `VecDeque` of order ids and a cached total quantity. Orders live in a
+  `HashMap` keyed by id, with a second index for direct cancel lookup.
+- **Events and replay.** The book records `OrderAccepted`, `OrderCancelled`,
+  `OrderModified`, and `TradeExecuted`. Replaying the events rebuilds the same
+  final snapshot. `EventMode` can be `Full`, `TradesOnly`, or `Disabled`.
 
-## Important Concepts
-
-### Price-Time Priority
-
-The engine follows price-time priority:
-
-```text
-better price wins first
-same price uses FIFO order
-```
-
-For buy orders, the best price is the highest bid. For sell orders, the best
-price is the lowest ask.
-
-### Integer Prices
-
-Prices use integer ticks instead of floating point values.
-
-```text
-good: 10025 ticks
-bad: 100.25 as f64
-```
-
-This avoids floating point rounding bugs in financial logic.
-
-### Event Replay
-
-The engine records events such as:
-
-```text
-OrderAccepted
-OrderCancelled
-OrderModified
-TradeExecuted
-```
-
-Replay lets us rebuild book state from historical events:
-
-```text
-saved event stream
--> replay events
--> same final book snapshot
-```
-
-This is important for debugging, audits, crash recovery, simulation, and later
-analytics.
-
-### Market Metrics
-
-Book metrics describe the final visible market:
-
-```text
-best bid
-best ask
-spread
-mid price
-total bid quantity
-total ask quantity
-bid and ask price levels
-order book imbalance
-```
-
-Trade metrics describe what happened during execution:
-
-```text
-trade count
-total traded quantity
-total notional
-last trade price
-VWAP
-```
-
-VWAP means volume-weighted average price:
-
-```text
-total traded notional / total traded quantity
-```
-
-### Synthetic Workloads
-
-Synthetic generators create repeatable order flows for testing, metrics, replay,
-and later benchmarks.
-
-The current generators are deterministic:
-
-```text
-synthetic
--> creates a two-sided resting book without trades
-
-synthetic-crossing
--> builds ask liquidity and then sends crossing buy orders
--> creates trades and execution metrics
-```
-
-Deterministic means the same config creates the same sequence every time. That
-is useful before adding randomness because tests and benchmark comparisons stay
-stable.
-
-### Benchmarks
-
-Benchmarks measure both full workloads and individual hot-path operations.
-
-Full workload benchmarks:
-
-```text
-two_sided_1000_orders
-crossing_1000_orders
-```
-
-Hot-path benchmarks:
-
-```text
-add_one_resting_order
-single_trade
-multi_level_sweep
-cancel_order
-modify_order
-```
-
-The full workload benchmarks show end-to-end scenario cost. The hot-path
-benchmarks isolate specific order book operations so later optimizations have a
-clear baseline.
-
-## Run
-
-Run tests:
+## Simulator
 
 ```bash
-cargo test
-```
-
-Format code:
-
-```bash
-cargo fmt
-```
-
-Run the default scenario:
-
-```bash
-cargo run
-```
-
-Run a specific scenario:
-
-```bash
-cargo run -- simple-cross
+cargo run                                   # default scenario: simple-cross
 cargo run -- buy-sweeps-asks
 cargo run -- cancel-and-modify
 cargo run -- two-sided-book
-cargo run -- synthetic --count 100
-cargo run -- synthetic-crossing --count 100
+cargo run -- synthetic --count 100          # two-sided resting book, no trades
+cargo run -- synthetic-crossing --count 100 # generates trades
 ```
 
-Print simulator output as JSON:
+| Flag | Effect |
+|---|---|
+| `--json` | Print the run as JSON |
+| `--save-events <file>` | Save the event stream |
+| `--replay-events <file>` | Rebuild a book from a saved event stream |
+| `--output-dir <dir>` | Write `events.json`, `snapshot.json`, `summary.json` |
 
-```bash
-cargo run -- buy-sweeps-asks --json
-```
+## API
 
-Save generated events:
-
-```bash
-cargo run -- buy-sweeps-asks --save-events events.json
-```
-
-Replay saved events:
-
-```bash
-cargo run -- --replay-events events.json
-```
-
-Write run artifacts:
-
-```bash
-cargo run -- synthetic-crossing --count 100 --output-dir runs/run-001
-```
-
-This creates:
-
-```text
-runs/run-001/events.json
-runs/run-001/snapshot.json
-runs/run-001/summary.json
-```
-
-`events.json` stores the full event stream for replay/debugging.
-`snapshot.json` stores the final order book state.
-`summary.json` stores small metrics that tools can read quickly.
-
-Run benchmarks:
-
-```bash
-cargo bench
-```
-
-## PostgreSQL And API
-
-Start the local PostgreSQL service:
+Start PostgreSQL and Prometheus, apply migrations, then run the server:
 
 ```bash
 docker compose up -d
-```
-
-Apply all schema migrations:
-
-```bash
 sqlx migrate run
-```
-
-Start the HTTP API separately from the simulator:
-
-```bash
+cargo run --bin bootstrap_admin -- admin@example.com "Administrator"
 cargo run --bin api
 ```
 
-Local configuration is loaded from `.env`:
+Configuration is read from `.env`:
 
 ```env
 DATABASE_URL=postgres://postgres:postgres@localhost:5433/limit_order_book
+API_ADDR=127.0.0.1:3000
 ```
 
-Create the first administrator interactively:
+| Route | Access | Purpose |
+|---|---|---|
+| `GET /health` | Public | API and database check |
+| `GET /metrics` | Public | Prometheus metrics |
+| `POST /auth/signup` | Public | Create a trader |
+| `POST /auth/login` | Public | Create a session, returns a bearer token |
+| `POST /auth/logout` | Bearer token | Revoke the session |
+| `GET /auth/me` | Bearer token | Current user and role |
+| `POST /accounts`, `GET /accounts` | Bearer token | Create and list your own accounts |
+| `POST /admin/users` | Admin | Create a user |
+| `POST /admin/instruments` | Admin | Create up to 100 instruments atomically |
+| `PATCH /admin/instruments/{id}/status` | Admin | Pause, unpause, or delist |
+
+Passwords are stored as Argon2 hashes. Session tokens are 256-bit random
+values; only their SHA-256 digest is stored. Details are in
+[docs/AUTHENTICATION.md](docs/AUTHENTICATION.md).
+
+Prometheus runs at `http://localhost:9090` and scrapes the API on port 3000.
+Because it runs in Docker, the API must listen on an address the container can
+reach, so `API_ADDR=127.0.0.1:3000` is not scraped.
+
+## Tests and benchmarks
 
 ```bash
-cargo run --bin bootstrap_admin -- admin@example.com "Administrator"
+cargo test          # unit tests; integration tests need PostgreSQL running
+cargo bench         # Criterion: workloads, hot path, deep books, event modes
+cargo clippy --all-targets
 ```
 
-The command prompts for the password without echoing it and atomically inserts
-the administrator and their Argon2 password hash.
-
-Check both the API and its database connection:
-
-```bash
-curl -i http://127.0.0.1:3000/health
-```
-
-Create a trader account:
-
-```bash
-curl -i -X POST http://127.0.0.1:3000/auth/signup \
-  -H 'content-type: application/json' \
-  -d '{"display_name":"Test Trader","email":"trader@example.com","password":"strong-password-123"}'
-```
-
-Create a session:
-
-```bash
-curl -i -X POST http://127.0.0.1:3000/auth/login \
-  -H 'content-type: application/json' \
-  -d '{"email":"trader@example.com","password":"strong-password-123"}'
-```
-
-Signup always assigns the `trader` role in server-side SQL. Login returns a
-random bearer token once; PostgreSQL stores only its SHA-256 digest. The full
-design, test cases, and Redis cache boundary are documented in
-[`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md).
-
-Use the returned token with protected routes:
-
-```bash
-curl -i http://127.0.0.1:3000/auth/me \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Logout revokes the PostgreSQL session and is idempotent:
-
-```bash
-curl -i -X POST http://127.0.0.1:3000/auth/logout \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Routes under `/admin/*` first validate the bearer session and then require the
-current database role to be `admin`. The former shared `x-admin-api-key`
-mechanism has been removed.
-
-## Orchestration Wrapper
-
-Build the release binary:
-
-```bash
-cargo build --release
-```
-
-Run a simulation through the wrapper:
-
-```bash
-./scripts/run_simulation.sh synthetic-crossing 100 runs/windmill-test
-```
-
-Create a fresh timestamped output folder automatically:
-
-```bash
-./scripts/run_simulation.sh synthetic-crossing 100 auto
-```
-
-Choose a custom prefix for automatically created folders:
-
-```bash
-RUN_PREFIX=windmill-scheduled ./scripts/run_simulation.sh synthetic-crossing 100 auto
-```
-
-The wrapper:
-
-```text
-uses target/release/limit_order_book
-creates the output directory
-writes each auto run to a fresh timestamped folder
-writes verbose command output to run.log
-prints only summary.json to stdout
-```
-
-Generated files:
-
-```text
-runs/windmill-test/events.json
-runs/windmill-test/run.log
-runs/windmill-test/snapshot.json
-runs/windmill-test/summary.json
-```
-
-This is useful for Windmill, CI, local automation, and later AI analysis. The
-matching engine remains independent from orchestration code.
-
-Generated run folders under `runs/` are ignored by Git.
-
-## AI Analysis Status
-
-AI integration is paused while the project shifts toward HFT-style systems work.
-
-What exists today:
-
-```text
-ai/analyze_run.py
-scripts/analyze_run.sh
-scripts/run_and_analyze.sh
-```
-
-The current AI-facing work is deterministic. It reads saved artifacts such as
-`summary.json`, `events.json`, and `snapshot.json`, then writes `analysis.md`.
-It does not call an LLM yet.
-
-Pause/resume notes:
-
-```text
-docs/AI_WORK_PAUSE.md
-```
-
-## HFT-Style Roadmap
-
-The next work is focused on making the engine a stronger low-latency systems
-project.
-
-Next priorities:
-
-```text
-finish the PostgreSQL control plane without coupling it to matching
-add authenticated account ownership APIs
-add admin-managed instruments and market configuration
-add reference/oracle pricing for risk and analytics
-add Redis only as an optional session cache with PostgreSQL fallback
-define compact engine commands, events, and monotonic sequences
-run each order-book shard through a dedicated single-writer thread
-use bounded preallocated queues with an explicit overload policy
-add a checksummed append-only journal and snapshot recovery
-measure gateway, queue, matching, journal, and response tail latency separately
-publish journaled events asynchronously to Kafka
-build idempotent PostgreSQL projections and later pgvector feature windows
-experiment with binary order entry, CPU pinning, and kernel bypass only after measurement
-```
-
-Detailed roadmap:
-
-```text
-docs/HFT_ROADMAP.md
-```
-
-Postgres, users, instruments, and stock/crypto reference pricing are planned as
-a separate persistence and market-data phase. They will store durable history
-and analytics data without putting database calls inside matching.
-
-Database and pricing roadmap:
-
-```text
-docs/POSTGRES_MARKET_DATA_ROADMAP.md
-```
-
-## Windmill Usage
-
-The current Windmill integration runs the Rust engine as an external job. The
-Windmill script changes into the mounted project directory, calls the wrapper,
-and returns only `summary.json` as the job result.
-
-Use this Bash script in Windmill:
-
-```bash
-scenario="$1"
-count="$2"
-output_dir="$3"
-
-# Trim spaces/newlines from Windmill inputs.
-scenario="$(echo "$scenario" | xargs)"
-count="$(echo "$count" | xargs)"
-output_dir="$(echo "$output_dir" | xargs)"
-
-# Defaults if the user leaves inputs empty.
-scenario="${scenario:-synthetic-crossing}"
-count="${count:-100}"
-output_dir="${output_dir:-auto}"
-
-cd /workspace/limit_order_book
-
-RUN_PREFIX=windmill-scheduled ./scripts/run_simulation.sh "$scenario" "$count" "$output_dir"
-```
-
-Recommended Windmill inputs:
-
-```text
-scenario: synthetic-crossing
-count: 100
-output_dir: auto
-```
-
-Why `output_dir: auto` matters:
-
-```text
-fixed folder -> every scheduled run overwrites the previous artifacts
-auto folder  -> every scheduled run gets a fresh timestamped folder
-```
-
-For Windmill schedules, use a six-field cron expression. The first field is
-seconds:
-
-```text
-*/5 * * * * *   every 5 seconds
-0 */5 * * * *   every 5 minutes
-```
-
-Verified scheduled runs create folders like:
-
-```text
-runs/windmill-scheduled-20260901-171000/events.json
-runs/windmill-scheduled-20260901-171000/run.log
-runs/windmill-scheduled-20260901-171000/snapshot.json
-runs/windmill-scheduled-20260901-171000/summary.json
-```
-
-## Synthetic Examples
-
-Build a two-sided resting book:
-
-```bash
-cargo run -- synthetic --count 20
-```
-
-This creates buy orders below the base price and sell orders above the base
-price. It is useful for book metrics such as spread, mid price, depth, and
-imbalance.
-
-Generate trades:
-
-```bash
-cargo run -- synthetic-crossing --count 20
-```
-
-This first builds ask liquidity, then sends buy orders that cross the spread.
-It is useful for trade metrics such as traded quantity, notional, last trade
-price, and VWAP.
-
-For crossing scenarios, the final `snapshot.json` may be empty because all
-resting orders can be fully matched. Use `events.json` to inspect what happened
-during the run.
-
-## Example Metrics
-
-```bash
-cargo run -- two-sided-book
-```
-
-This scenario leaves both bids and asks resting in the book, so spread, mid
-price, depth, and imbalance are visible.
-
-Expected market shape:
-
-```text
-best bid: 100
-best ask: 105
-spread: 5
-mid price: 102.5
-total bid quantity: 15
-total ask quantity: 10
-imbalance: 0.6
-```
-
-## Roadmap
-
-The project is built in phases:
-
-```text
-Phase 1: Matching core
-Phase 2: Correctness tests
-Phase 3: Cancel and modify orders
-Phase 4: Event log and replay
-Phase 5: Market data simulator
-Phase 6: Market data metrics
-Phase 7: Synthetic order generator
-Phase 8: Benchmarks
-Phase 9: Windmill orchestration
-Phase 10: AI/LangChain/LangGraph analysis foundation paused
-Phase 11: Measured in-memory engine and data-structure optimization
-Phase 12: Postgres control plane, users, authentication, instruments, and pricing
-Phase 13: Sequenced single-writer engine runtime
-Phase 14: Durable journal, snapshots, and crash recovery
-Phase 15: Kafka event distribution and idempotent projections
-Phase 16: Persistent binary order gateway
-Phase 17: Profile-guided advanced latency engineering
-```
-
-Current focus:
-
-```text
-Phase 12: accounts, instruments, and reference/oracle pricing
-```
-
-Detailed roadmap:
-
-```text
-docs/ROADMAP.md
-docs/ARCHITECTURE.md
-docs/CURRENT_ARCHITECTURE_FLOWCHARTS.md
-docs/HFT_ROADMAP.md
-docs/POSTGRES_MARKET_DATA_ROADMAP.md
-```
-
-## Long-Term Direction
-
-The final project direction:
-
-```text
-Rust matching engine
--> event replay and market simulation
--> market data metrics
--> synthetic workloads
--> benchmark reports
--> PostgreSQL control plane and local risk/configuration snapshots
--> sequenced single-writer matching shards
--> durable journal, snapshots, and deterministic recovery
--> Kafka and idempotent query/analytics projections
--> binary order gateway and stage-level tail-latency measurements
--> profile-guided HFT optimization experiments
--> Windmill scheduled runs and dashboards
--> pgvector market-state research and AI workflows later
-```
-
-The hot path remains Rust-only, in memory, single-writer, bounded, and free of
-database, Kafka, AI, and external network calls.
+## More documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — current and target design
+- [docs/CURRENT_ARCHITECTURE_FLOWCHARTS.md](docs/CURRENT_ARCHITECTURE_FLOWCHARTS.md) — flow diagrams
+- [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/HFT_ROADMAP.md](docs/HFT_ROADMAP.md) — phases and next steps
+- [docs/POSTGRES_MARKET_DATA_ROADMAP.md](docs/POSTGRES_MARKET_DATA_ROADMAP.md) — database and pricing plan
+- [docs/PERFORMANCE_BASELINE.md](docs/PERFORMANCE_BASELINE.md) — benchmark results
+- [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) — auth design
+- [docs/WINDMILL.md](docs/WINDMILL.md) — scheduled runs through Windmill
+- [docs/AI_WORK_PAUSE.md](docs/AI_WORK_PAUSE.md) — paused AI analysis work
