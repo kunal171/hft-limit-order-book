@@ -11,8 +11,7 @@ fn build_deep_book(order_count: u64) -> OrderBook {
     let mut book = OrderBook::new();
 
     for id in 1..=order_count {
-        // Same price level creates a deep FIFO queue.
-        // This is intentionally bad for current cancel scanning.
+        // Same price level creates one deep FIFO queue.
         book.add_order(Order::new(id, Side::Buy, 100, 10))
             .expect("setup order should be accepted");
     }
@@ -20,12 +19,12 @@ fn build_deep_book(order_count: u64) -> OrderBook {
     book
 }
 
-fn build_deep_book_with_stale_ids(order_count: u64) -> OrderBook {
+fn build_deep_book_after_cancels(order_count: u64) -> OrderBook {
     let mut book = build_deep_book(order_count);
 
     for id in 1..order_count {
-        // Lazy cancel leaves stale IDs in the FIFO queue, but removes active
-        // liquidity from the price level's total quantity.
+        // Cancels every order except the last one, so the level's queue
+        // shrinks to a single order.
         book.cancel_order(id)
             .expect("setup cancel should remove active order");
     }
@@ -208,7 +207,7 @@ fn bench_hot_path_operations(c: &mut Criterion) {
 
 fn bench_large_two_sided_books(c: &mut Criterion) {
     // Test bigger resting books before optimizing.
-    // This shows how the current BTreeMap + VecDeque structure scales.
+    // This shows how the BTreeMap price ladder and order arena scale.
 
     for order_count in [10_000, 100_000] {
         let commands = generate_two_sided_orders(GeneratorConfig {
@@ -233,7 +232,7 @@ fn bench_deep_cancel_modify(c: &mut Criterion) {
         b.iter_batched_ref(
             || build_deep_book(10_000),
             |book| {
-                // Cancel near the end to expose scan cost.
+                // Cancel near the end of the queue: position must not matter.
                 book.cancel_order(black_box(9_999))
                     .expect("cancel should succeed");
             },
@@ -241,12 +240,12 @@ fn bench_deep_cancel_modify(c: &mut Criterion) {
         );
     });
 
-    c.bench_function("cancel_after_9999_lazy_cancels_ref", |b| {
+    c.bench_function("cancel_last_order_after_9999_cancels_ref", |b| {
         b.iter_batched_ref(
-            || build_deep_book_with_stale_ids(10_000),
+            || build_deep_book_after_cancels(10_000),
             |book| {
-                // This should stay fast even though the FIFO queue contains
-                // many stale IDs before this active order.
+                // Cancels the only order left after 9,999 earlier cancels
+                // freed their arena slots.
                 book.cancel_order(black_box(10_000))
                     .expect("last active cancel should succeed");
             },
@@ -258,7 +257,7 @@ fn bench_deep_cancel_modify(c: &mut Criterion) {
         b.iter_batched_ref(
             || build_deep_book(10_000),
             |book| {
-                // Modify also removes first, so it exposes the same lookup weakness.
+                // Modify detaches the order first, so queue position must not matter.
                 book.modify_order(black_box(9_999), black_box(101), black_box(7))
                     .expect("modify should succeed");
             },
@@ -269,7 +268,7 @@ fn bench_deep_cancel_modify(c: &mut Criterion) {
 
 fn bench_price_level_liquidity_queries(c: &mut Criterion) {
     let active_book = build_deep_book(10_000);
-    let stale_book = build_deep_book_with_stale_ids(10_000);
+    let cancelled_book = build_deep_book_after_cancels(10_000);
     let cancelled_levels_book = build_book_with_cancelled_price_levels(10_000);
 
     c.bench_function("best_bid_from_price_level_quantity_10000_orders", |b| {
@@ -284,9 +283,9 @@ fn bench_price_level_liquidity_queries(c: &mut Criterion) {
         });
     });
 
-    c.bench_function("best_bid_after_9999_same_level_lazy_cancels", |b| {
+    c.bench_function("best_bid_after_9999_same_level_cancels", |b| {
         b.iter(|| {
-            black_box(stale_book.best_bid());
+            black_box(cancelled_book.best_bid());
         });
     });
 
