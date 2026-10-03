@@ -139,5 +139,6 @@ cargo clippy --all-targets
 - [docs/POSTGRES_MARKET_DATA_ROADMAP.md](docs/POSTGRES_MARKET_DATA_ROADMAP.md) — database and pricing plan
 - [docs/PERFORMANCE_BASELINE.md](docs/PERFORMANCE_BASELINE.md) — benchmark results
 - [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) — auth design
+- [docs/RATE_LIMITING.md](docs/RATE_LIMITING.md) — auth rate limiting and when to move it to Redis
 - [docs/WINDMILL.md](docs/WINDMILL.md) — scheduled runs through Windmill
 - [docs/AI_WORK_PAUSE.md](docs/AI_WORK_PAUSE.md) — paused AI analysis work
