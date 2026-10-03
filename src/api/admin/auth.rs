@@ -1,4 +1,7 @@
-use crate::api::{auth::sessions::AuthenticatedUser, error::ApiError};
+use crate::api::{
+    auth::{role::UserRole, sessions::AuthenticatedUser},
+    error::ApiError,
+};
 
 use axum::{extract::Request, http::StatusCode, middleware::Next, response::Response};
 
@@ -10,7 +13,7 @@ pub async fn require_admin(request: Request, next: Next) -> Result<Response, Api
         .get::<AuthenticatedUser>()
         .ok_or_else(|| ApiError::new(StatusCode::UNAUTHORIZED, "authentication required"))?;
 
-    if user.role != "admin" {
+    if user.role != UserRole::Admin {
         return Err(ApiError::new(
             StatusCode::FORBIDDEN,
             "administrator access required",

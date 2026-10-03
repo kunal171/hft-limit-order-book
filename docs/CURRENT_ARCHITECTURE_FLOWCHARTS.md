@@ -226,7 +226,7 @@ flowchart TD
     Fifo --> Fill[Execute minimum remaining quantity]
     Fill --> Trade[Create trade and update depth]
     Trade --> RestingFilled{Resting order filled?}
-    RestingFilled -->|Yes| RemoveIndexes[Remove active order indexes]
+    RestingFilled -->|Yes| RemoveIndexes[Unlink from level and free arena slot]
     RestingFilled -->|No| KeepFront[Keep partial order at FIFO front]
     RemoveIndexes --> IncomingFilled{Incoming order filled?}
     KeepFront --> IncomingFilled
@@ -242,10 +242,13 @@ Current in-memory ownership:
 flowchart LR
     OrderBook --> Bids[BTreeMap bids]
     OrderBook --> Asks[BTreeMap asks]
-    Bids --> BidLevels[PriceLevel: FIFO order IDs and cached quantity]
-    Asks --> AskLevels[PriceLevel: FIFO order IDs and cached quantity]
-    OrderBook --> Orders[HashMap order ID to Order]
-    OrderBook --> Locations[HashMap order ID to side and price]
+    Bids --> BidLevels[PriceLevel: head, tail, cached quantity]
+    Asks --> AskLevels[PriceLevel: head, tail, cached quantity]
+    BidLevels --> Arena[OrderArena: order nodes linked by prev and next]
+    AskLevels --> Arena
+    OrderBook --> Arena
+    OrderBook --> Slots[HashMap order ID to arena slot]
+    OrderBook --> Seen[HashSet of every accepted order ID]
     OrderBook --> Events[Vec BookEvent]
 ```
 

@@ -1,6 +1,7 @@
 use axum::{Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
 
+use super::status::UserStatus;
 use crate::api::{error::ApiError, state::AppState};
 use argon2::{Argon2, password_hash::PasswordHasher};
 use tokio::task;
@@ -175,7 +176,7 @@ pub async fn signup(
             id: user_id,
             display_name,
             email,
-            status: "active".to_string(),
+            status: UserStatus::Active.as_str().to_string(),
             role: "trader".to_string(),
         }),
     ))

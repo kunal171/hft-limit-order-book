@@ -20,7 +20,9 @@ tokio = { version = "1.53.1", features = ["full"] }
 tower-http = { version = "0.7.1", features = ["trace"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
-uuid = { version = "1.26.0", features = ["v7", "serde"] }
+uuid = { version = "1.26.1", features = ["v7", "serde"] }
+metrics = "0.24.6"
+axum-prometheus = "0.10.1"
 
 
 [dev-dependencies]

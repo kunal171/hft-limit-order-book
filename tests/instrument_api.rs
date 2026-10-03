@@ -1,7 +1,7 @@
 mod common;
 
 use axum::http::{Method, StatusCode};
-use common::{admin_token, json_request, read_json, send};
+use common::{admin_token, empty_request, json_request, read_json, send};
 use limit_order_book::api::{router, state::AppState};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -288,4 +288,301 @@ async fn instrument_batch_larger_than_limit_is_rejected(pool: PgPool) {
         .expect("instrument count should be readable");
 
     assert_eq!(count, 0);
+}
+
+#[sqlx::test]
+async fn admin_can_pause_unpause_and_delist_instrument(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+    let token = admin_token(&app, &pool, "status-admin@example.com").await;
+
+    let create_response = send(
+        &app,
+        json_request(
+            Method::POST,
+            "/admin/instruments",
+            json!([instrument_request("BTC-USDT", "BTC", "USDT")]),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    let created: Vec<CreatedInstrument> = read_json(create_response).await;
+    let instrument_id = created[0].id;
+    let status_uri = format!("/admin/instruments/{instrument_id}/status");
+
+    for (status, expected) in [
+        ("paused", "paused"),
+        ("active", "active"),
+        ("delisted", "delisted"),
+    ] {
+        let response = send(
+            &app,
+            json_request(
+                Method::PATCH,
+                &status_uri,
+                json!({ "status": status }),
+                Some(&token),
+            ),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let instrument: CreatedInstrument = read_json(response).await;
+        assert_eq!(instrument.status, expected);
+    }
+}
+
+#[sqlx::test]
+async fn delisted_instrument_cannot_be_reactivated(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+    let token = admin_token(&app, &pool, "delisted-admin@example.com").await;
+
+    let create_response = send(
+        &app,
+        json_request(
+            Method::POST,
+            "/admin/instruments",
+            json!([instrument_request("ETH-USDT", "ETH", "USDT")]),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    let created: Vec<CreatedInstrument> = read_json(create_response).await;
+    let status_uri = format!("/admin/instruments/{}/status", created[0].id);
+
+    let delist_response = send(
+        &app,
+        json_request(
+            Method::PATCH,
+            &status_uri,
+            json!({ "status": "delisted" }),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    assert_eq!(delist_response.status(), StatusCode::OK);
+
+    let reactivate_response = send(
+        &app,
+        json_request(
+            Method::PATCH,
+            &status_uri,
+            json!({ "status": "active" }),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    assert_eq!(reactivate_response.status(), StatusCode::CONFLICT);
+}
+
+#[sqlx::test]
+async fn updating_missing_instrument_status_returns_not_found(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+    let token = admin_token(&app, &pool, "missing-status-admin@example.com").await;
+
+    let instrument_id = Uuid::now_v7();
+    let response = send(
+        &app,
+        json_request(
+            Method::PATCH,
+            &format!("/admin/instruments/{instrument_id}/status"),
+            json!({ "status": "paused" }),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[sqlx::test]
+async fn invalid_instrument_status_is_rejected(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+    let token = admin_token(&app, &pool, "invalid-status-admin@example.com").await;
+
+    // Serde rejects values outside the MarketStatus enum before SQL is executed.
+    let instrument_id = Uuid::now_v7();
+    let response = send(
+        &app,
+        json_request(
+            Method::PATCH,
+            &format!("/admin/instruments/{instrument_id}/status"),
+            json!({ "status": "closed" }),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[sqlx::test]
+async fn setting_same_instrument_status_is_idempotent(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+    let token = admin_token(&app, &pool, "idempotent-status-admin@example.com").await;
+
+    let create_response = send(
+        &app,
+        json_request(
+            Method::POST,
+            "/admin/instruments",
+            json!([instrument_request("SOL-USDT", "SOL", "USDT")]),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    let created: Vec<CreatedInstrument> = read_json(create_response).await;
+    let instrument_id = created[0].id;
+
+    // Newly created instruments are active, so this repeats the current state.
+    let response = send(
+        &app,
+        json_request(
+            Method::PATCH,
+            &format!("/admin/instruments/{instrument_id}/status"),
+            json!({ "status": "active" }),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let instrument: CreatedInstrument = read_json(response).await;
+    assert_eq!(instrument.status, "active");
+}
+
+#[sqlx::test]
+async fn updating_instrument_status_without_token_is_rejected(pool: PgPool) {
+    let app = router(AppState::new(pool));
+
+    // The instrument does not need to exist because authentication runs
+    // before the status handler reaches the database.
+    let instrument_id = Uuid::now_v7();
+
+    let response = send(
+        &app,
+        json_request(
+            Method::PATCH,
+            &format!("/admin/instruments/{instrument_id}/status"),
+            json!({ "status": "paused" }),
+            None,
+        ),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test]
+async fn trader_cannot_update_instrument_status(pool: PgPool) {
+    let app = router(AppState::new(pool));
+
+    // Public signup always creates a normal trader, never an administrator.
+    signup(&app, "status-trader@example.com").await;
+    let token = login(&app, "status-trader@example.com").await;
+
+    // The instrument does not need to exist because authorization rejects
+    // the request before the status handler runs.
+    let instrument_id = Uuid::now_v7();
+
+    let response = send(
+        &app,
+        json_request(
+            Method::PATCH,
+            &format!("/admin/instruments/{instrument_id}/status"),
+            json!({ "status": "paused" }),
+            Some(&token),
+        ),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[sqlx::test]
+async fn database_rejects_non_positive_tick_size(pool: PgPool) {
+    // Insert directly, skipping handler validation.
+    let error = sqlx::query(
+        r#"
+        INSERT INTO instruments (
+            id, symbol, asset_class, base_asset, quote_asset,
+            price_scale, quantity_scale, tick_size, lot_size, status
+        )
+        VALUES ($1, 'BAD-USD', 'crypto', 'BAD', 'USD', 2, 6, 0, 1000, 'active')
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .execute(&pool)
+    .await
+    .expect_err("zero tick size should violate a check constraint");
+
+    let code = error
+        .as_database_error()
+        .and_then(|error| error.code().map(|code| code.to_string()));
+
+    // 23514 is PostgreSQL's check_violation.
+    assert_eq!(code.as_deref(), Some("23514"));
+}
+
+#[sqlx::test]
+async fn trader_can_list_and_fetch_instruments(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+    let admin = admin_token(&app, &pool, "list-admin@example.com").await;
+
+    let created = send(
+        &app,
+        json_request(
+            Method::POST,
+            "/admin/instruments",
+            json!([
+                instrument_request("ETH-USDT", "ETH", "USDT"),
+                instrument_request("BTC-USDT", "BTC", "USDT"),
+            ]),
+            Some(&admin),
+        ),
+    )
+    .await;
+    assert_eq!(created.status(), StatusCode::CREATED);
+
+    signup(&app, "list-trader@example.com").await;
+    let trader = login(&app, "list-trader@example.com").await;
+
+    let listed = send(
+        &app,
+        empty_request(Method::GET, "/instruments", Some(&trader)),
+    )
+    .await;
+    assert_eq!(listed.status(), StatusCode::OK);
+
+    // The list is ordered by symbol, not by creation order.
+    let instruments: Vec<CreatedInstrument> = read_json(listed).await;
+    let symbols: Vec<&str> = instruments
+        .iter()
+        .map(|instrument| instrument.symbol.as_str())
+        .collect();
+    assert_eq!(symbols, vec!["BTC-USDT", "ETH-USDT"]);
+
+    let uri = format!("/instruments/{}", instruments[0].id);
+    let fetched = send(&app, empty_request(Method::GET, &uri, Some(&trader))).await;
+    assert_eq!(fetched.status(), StatusCode::OK);
+
+    let fetched: CreatedInstrument = read_json(fetched).await;
+    assert_eq!(fetched.symbol, "BTC-USDT");
+
+    let missing = format!("/instruments/{}", Uuid::now_v7());
+    let not_found = send(&app, empty_request(Method::GET, &missing, Some(&trader))).await;
+    assert_eq!(not_found.status(), StatusCode::NOT_FOUND);
+}
+
+#[sqlx::test]
+async fn listing_instruments_without_token_is_rejected(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+
+    let response = send(&app, empty_request(Method::GET, "/instruments", None)).await;
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }

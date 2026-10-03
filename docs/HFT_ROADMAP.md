@@ -42,8 +42,10 @@ Completed foundation:
 deterministic price-time matching and FIFO
 partial fills, cancel, and modify
 BTreeMap<Price, PriceLevel> bid/ask ladders
-HashMap<OrderId, Order> direct order storage
-HashMap<OrderId, OrderLocation> cancellation index
+arena order storage with reusable slots
+linked FIFO queue per price level, O(1) cancel and modify detach
+HashMap<OrderId, Slot> direct order lookup
+single-use order ids
 cached active quantity per price level
 configurable event recording
 snapshots and deterministic replay

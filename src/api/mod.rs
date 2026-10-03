@@ -7,6 +7,8 @@ mod admin;
 pub mod auth;
 pub mod error;
 mod health;
+mod instruments;
+pub mod rate_limit;
 pub mod state;
 
 /// Builds the complete HTTP router.
@@ -26,10 +28,17 @@ pub fn router(state: AppState) -> Router {
         auth::sessions::require_authenticated,
     ));
 
+    // Any authenticated user may read instruments; only admins change them.
+    let instrument_routes = instruments::router().route_layer(middleware::from_fn_with_state(
+        state.clone(),
+        auth::sessions::require_authenticated,
+    ));
+
     Router::new()
         .route("/health", get(health::health))
         .nest("/auth", auth::router(state.clone()))
         .nest("/admin", admin_routes)
         .nest("/accounts", account_routes)
+        .nest("/instruments", instrument_routes)
         .with_state(state)
 }

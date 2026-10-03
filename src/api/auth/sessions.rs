@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+use super::{role::UserRole, status::UserStatus};
 use crate::api::{error::ApiError, state::AppState};
 
 /// Trusted identity produced after validating a database session.
@@ -19,7 +20,7 @@ use crate::api::{error::ApiError, state::AppState};
 #[derive(Debug, Clone)]
 pub struct AuthenticatedUser {
     pub user_id: Uuid,
-    pub role: String,
+    pub role: UserRole,
 }
 
 /// Session identity loaded from PostgreSQL.
@@ -36,7 +37,7 @@ struct SessionUserRow {
 #[derive(Debug, Serialize)]
 pub struct CurrentUserResponse {
     pub user_id: Uuid,
-    pub role: String,
+    pub role: UserRole,
 }
 
 /// Produces the digest used as the session lookup key.
@@ -122,17 +123,37 @@ pub async fn require_authenticated(
             ApiError::new(StatusCode::UNAUTHORIZED, "invalid or expired session")
         })?;
 
-    if session.status != "active" {
+    // The CHECK constraint makes an unknown status a data error, not a client error.
+    let status = UserStatus::parse(&session.status).ok_or_else(|| {
+        tracing::error!(status = %session.status, "session user has an unknown status");
+
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to validate session",
+        )
+    })?;
+
+    if status != UserStatus::Active {
         return Err(ApiError::new(
             StatusCode::FORBIDDEN,
             "account is not active",
         ));
     }
 
+    // The CHECK constraint makes an unknown role a data error, not a client error.
+    let role = UserRole::parse(&session.role).ok_or_else(|| {
+        tracing::error!(role = %session.role, "session user has an unknown role");
+
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to validate session",
+        )
+    })?;
+
     // Extensions carry trusted request-scoped data to downstream handlers.
     request.extensions_mut().insert(AuthenticatedUser {
         user_id: session.user_id,
-        role: session.role,
+        role,
     });
 
     Ok(next.run(request).await)

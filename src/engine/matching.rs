@@ -1,4 +1,4 @@
-use crate::domain::{Order, Price, Trade};
+use crate::domain::{Order, Price, Side, Trade};
 
 use super::order_book::OrderBook;
 
@@ -17,7 +17,7 @@ impl OrderBook {
                 break;
             }
 
-            self.match_at_ask_level(best_ask_price, &mut incoming, &mut trades);
+            self.match_at_level(Side::Sell, best_ask_price, &mut incoming, &mut trades);
         }
 
         // Any unfilled quantity becomes a resting bid.
@@ -43,7 +43,7 @@ impl OrderBook {
                 break;
             }
 
-            self.match_at_bid_level(best_bid_price, &mut incoming, &mut trades);
+            self.match_at_level(Side::Buy, best_bid_price, &mut incoming, &mut trades);
         }
 
         // Any unfilled quantity becomes a resting ask.
@@ -55,85 +55,51 @@ impl OrderBook {
         trades
     }
 
-    /// Match against one ask price level.
-    fn match_at_ask_level(&mut self, price: Price, incoming: &mut Order, trades: &mut Vec<Trade>) {
-        let mut should_remove_level = false;
+    /// Match the incoming order against the queue at one price.
+    ///
+    /// `maker_side` is the side of the resting orders being consumed.
+    fn match_at_level(
+        &mut self,
+        maker_side: Side,
+        price: Price,
+        incoming: &mut Order,
+        trades: &mut Vec<Trade>,
+    ) {
+        let levels = match maker_side {
+            Side::Buy => &mut self.bids,
+            Side::Sell => &mut self.asks,
+        };
 
-        if let Some(level) = self.asks.get_mut(&price) {
-            while !incoming.is_filled() {
-                let Some(resting_id) = level.order_ids.pop_front() else {
-                    break;
-                };
+        let Some(level) = levels.get_mut(&price) else {
+            return;
+        };
 
-                let Some(mut resting) = self.orders.remove(&resting_id) else {
-                    continue; // stale cancelled id
-                };
+        while !incoming.is_filled() {
+            let Some(slot) = level.head else {
+                break;
+            };
 
-                let traded_qty = incoming.remaining_qty.min(resting.remaining_qty);
-                incoming.remaining_qty -= traded_qty;
+            let resting = &mut self.arena.get_mut(slot).order;
+            let traded_qty = incoming.remaining_qty.min(resting.remaining_qty);
+            incoming.remaining_qty -= traded_qty;
+
+            trades.push(Trade::new(resting.id, incoming.id, price, traded_qty));
+
+            if traded_qty == resting.remaining_qty {
+                // Fully filled: `unlink` subtracts its quantity from the level.
+                let resting_id = resting.id;
+                level.unlink(&mut self.arena, slot);
+                self.arena.remove(slot);
+                self.order_slots.remove(&resting_id);
+            } else {
+                // Partially filled: it stays at the head and keeps its priority.
                 resting.remaining_qty -= traded_qty;
-
                 level.total_quantity -= traded_qty;
-
-                trades.push(Trade::new(resting.id, incoming.id, price, traded_qty));
-
-                // A fully filled resting order must leave the active-order index.
-                // A partially filled resting order keeps its FIFO position.
-                if resting.is_filled() {
-                    self.order_locations.remove(&resting.id);
-                } else {
-                    self.orders.insert(resting.id, resting);
-                    level.order_ids.push_front(resting_id);
-                    break;
-                }
             }
-
-            should_remove_level = level.order_ids.is_empty() || level.total_quantity == 0;
         }
 
-        if should_remove_level {
-            self.asks.remove(&price);
-        }
-    }
-
-    /// Match against one bid price level.
-    fn match_at_bid_level(&mut self, price: Price, incoming: &mut Order, trades: &mut Vec<Trade>) {
-        let mut should_remove_level = false;
-
-        if let Some(level) = self.bids.get_mut(&price) {
-            while !incoming.is_filled() {
-                let Some(resting_id) = level.order_ids.pop_front() else {
-                    break;
-                };
-
-                let Some(mut resting) = self.orders.remove(&resting_id) else {
-                    continue; // stale cancelled id
-                };
-                let traded_qty = incoming.remaining_qty.min(resting.remaining_qty);
-                incoming.remaining_qty -= traded_qty;
-                resting.remaining_qty -= traded_qty;
-
-                //update total quantity
-                level.total_quantity -= traded_qty;
-
-                trades.push(Trade::new(resting.id, incoming.id, price, traded_qty));
-
-                // A fully filled resting order must leave the active-order index.
-                // A partially filled resting order keeps its FIFO position.
-                if resting.is_filled() {
-                    self.order_locations.remove(&resting.id);
-                } else {
-                    self.orders.insert(resting.id, resting);
-                    level.order_ids.push_front(resting_id);
-                    break;
-                }
-            }
-
-            should_remove_level = level.order_ids.is_empty() || level.total_quantity == 0;
-        }
-
-        if should_remove_level {
-            self.bids.remove(&price);
+        if level.is_empty() {
+            levels.remove(&price);
         }
     }
 }

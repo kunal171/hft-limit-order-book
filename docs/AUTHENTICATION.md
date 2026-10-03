@@ -162,9 +162,18 @@ local Rust memory.
 
 ## Remaining Security Work
 
+Done since this list was written:
+
 ```text
-login rate limiting
 dummy password verification for unknown-email timing resistance
+integration test that unknown email and wrong password look identical
+per-IP token-bucket limiter on signup and login (see RATE_LIMITING.md)
+```
+
+Still open:
+
+```text
+per-email login limit and Redis-backed limiting (see RATE_LIMITING.md)
 TLS at the deployment boundary
 secret management outside local .env files
 session and security audit events

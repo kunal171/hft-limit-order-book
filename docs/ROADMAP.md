@@ -880,13 +880,31 @@ idempotent logout and session revocation
 unit and isolated PostgreSQL authentication integration tests
 authenticated account creation and owner-scoped listing
 administrator-managed instrument creation with atomic batch rollback
+instrument pause, resume, and delist with a guarded status transition
+authenticated instrument list and lookup for every user
+database CHECK constraints on instrument tick, lot, and scale rules
+typed UserRole in the session and admin middleware
+equal login timing for unknown emails and wrong passwords
+per-IP rate limiting on signup and login
+graceful shutdown and RUST_LOG-driven log levels
 ```
 
-Next control-plane slice:
+Remaining before Phase 13:
 
 ```text
-add reference/oracle pricing for risk checks and analytics
-measure session lookup before introducing Redis caching
+expose validated instrument configuration as an in-memory snapshot the engine
+runtime can read without querying PostgreSQL
+```
+
+Deferred, with reasons:
+
+```text
+reference/oracle pricing    useful for risk checks and mark prices, which need
+                            orders first; build order places it after the
+                            engine runtime (POSTGRES_MARKET_DATA_ROADMAP.md)
+Redis session cache         measure session lookup first
+Redis rate limiting         only needed with more than one API process
+                            (RATE_LIMITING.md)
 ```
 
 ## Phase 13: Sequenced Single-Writer Runtime

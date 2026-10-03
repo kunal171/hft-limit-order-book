@@ -1,9 +1,9 @@
 mod common;
 
 use axum::http::{Method, StatusCode};
-use common::{empty_request, json_request, login, send, signup};
-use limit_order_book::api::{router, state::AppState};
-use serde_json::json;
+use common::{empty_request, json_request, login, read_json, send, signup};
+use limit_order_book::api::{rate_limit::RateLimitConfig, router, state::AppState};
+use serde_json::{Value, json};
 use sqlx::PgPool;
 
 #[sqlx::test]
@@ -57,6 +57,41 @@ async fn login_authenticate_and_logout_lifecycle(pool: PgPool) {
             .await
             .expect("session should exist");
     assert!(revoked);
+}
+
+#[sqlx::test]
+async fn unknown_email_and_wrong_password_are_indistinguishable(pool: PgPool) {
+    let app = router(AppState::new(pool.clone()));
+    signup(&app, "known@example.com").await;
+
+    let wrong_password = send(
+        &app,
+        json_request(
+            Method::POST,
+            "/auth/login",
+            json!({ "email": "known@example.com", "password": "not-the-right-password" }),
+            None,
+        ),
+    )
+    .await;
+
+    let unknown_email = send(
+        &app,
+        json_request(
+            Method::POST,
+            "/auth/login",
+            json!({ "email": "nobody@example.com", "password": "not-the-right-password" }),
+            None,
+        ),
+    )
+    .await;
+
+    assert_eq!(wrong_password.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(unknown_email.status(), StatusCode::UNAUTHORIZED);
+
+    let wrong_password_body: Value = read_json(wrong_password).await;
+    let unknown_email_body: Value = read_json(unknown_email).await;
+    assert_eq!(wrong_password_body, unknown_email_body);
 }
 
 #[sqlx::test]
@@ -146,4 +181,41 @@ async fn admin_route_requires_admin_role(pool: PgPool) {
         .expect("admin-created user should exist");
 
     assert_eq!(created_role, "system");
+}
+
+#[sqlx::test]
+async fn repeated_login_attempts_are_rate_limited(pool: PgPool) {
+    // No refill, so the outcome does not depend on how long the test takes.
+    let app = router(AppState::with_auth_rate_limit(
+        pool.clone(),
+        RateLimitConfig {
+            burst: 3,
+            refill_per_second: 0.0,
+        },
+    ));
+
+    let attempt = || {
+        json_request(
+            Method::POST,
+            "/auth/login",
+            json!({ "email": "nobody@example.com", "password": "not-the-right-password" }),
+            None,
+        )
+    };
+
+    for _ in 0..3 {
+        let response = send(&app, attempt()).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    let limited = send(&app, attempt()).await;
+    assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    // Routes outside the limiter are unaffected.
+    let logout = send(
+        &app,
+        empty_request(Method::POST, "/auth/logout", Some("any-token")),
+    )
+    .await;
+    assert_eq!(logout.status(), StatusCode::NO_CONTENT);
 }

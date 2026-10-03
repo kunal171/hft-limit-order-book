@@ -9,6 +9,7 @@ pub mod domain;
 pub mod engine;
 pub mod error;
 pub mod metrics;
+pub mod observability;
 pub mod replay;
 pub mod simulator;
 

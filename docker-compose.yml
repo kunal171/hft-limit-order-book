@@ -10,6 +10,21 @@ services:
       - "5433:5432"
     volumes:
       - "lob_postgres_data:/var/lib/postgresql/data"
+
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    container_name: lob-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      # Mount our configuration as read-only.
+      - "./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+      # Preserve collected metrics when the container restarts.
+      - "lob_prometheus_data:/prometheus"
+    extra_hosts:
+      # On Linux, allow the container to reach services running on the host.
+      - "host.docker.internal:host-gateway"
       
 volumes:
   lob_postgres_data:
+  lob_prometheus_data:

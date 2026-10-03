@@ -12,6 +12,82 @@ measure first, optimize second
 Any future optimization should compare against this file before we decide
 whether the change actually helped.
 
+## Arena Order Book Comparison
+
+The engine now stores resting orders in an arena with a linked list per price
+level. Lazy cancels and stale queue ids no longer exist.
+
+```text
+Date: 2026-10-02
+Branch: feature/observability-foundation
+Before: f8aba26 (VecDeque levels, lazy cancel, single-use order ids)
+After:  0e011b4 (arena + linked price levels)
+Rust: rustc 1.98.1 (48a229cea 2026-09-01)
+Command: cargo bench --bench order_book_bench -- --baseline before-arena
+Test result: 57 passed
+```
+
+Values are Criterion mean estimates from the same machine and session. Every
+change was reported as statistically significant (p < 0.05).
+
+| Benchmark | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| `add_one_resting_order` | 147.98 ns | 114.30 ns | -23% |
+| `single_trade_ref` | 79.16 ns | 46.44 ns | -41% |
+| `multi_level_sweep_ref` | 347.54 ns | 248.34 ns | -29% |
+| `cancel_order_ref` | 69.50 ns | 53.91 ns | -22% |
+| `modify_order_ref` | 129.33 ns | 89.44 ns | -31% |
+| `cancel_from_10000_deep_level_ref` | 97.58 ns | 80.48 ns | -18% |
+| `cancel_last_order_after_9999_cancels_ref` | 206.30 ns | 113.15 ns | -45% |
+| `modify_from_10000_deep_level_ref` | 2.94 us | 120.42 ns | -96% |
+| `best_bid_from_price_level_quantity_10000_orders` | 3.03 ns | 1.98 ns | -35% |
+| `best_bid_after_9999_same_level_cancels` | 3.19 ns | 1.96 ns | -39% |
+| `best_bid_after_9999_cancelled_price_levels` | 3.11 ns | 1.96 ns | -37% |
+| `resting_count_from_10000_active_orders` | 239.0 ps | 227.9 ps | -5% |
+| `two_sided_1000_orders` | 133.48 us | 98.47 us | -26% |
+| `two_sided_10000_orders` | 1.36 ms | 1.01 ms | -25% |
+| `two_sided_100000_orders` | 16.78 ms | 12.36 ms | -26% |
+| `crossing_1000_orders` | 130.18 us | 107.93 us | -17% |
+| `multi_symbol_100x1000_orders` | 16.07 ms | 10.44 ms | -35% |
+| `crossing_1000_events_full` | 116.59 us | 87.74 us | -25% |
+| `crossing_1000_events_trades_only` | 118.13 us | 86.32 us | -27% |
+| `crossing_1000_events_disabled` | 121.94 us | 83.31 us | -32% |
+
+Two benchmarks were renamed after this comparison, because the old names
+described lazy cancels:
+
+```text
+cancel_after_9999_lazy_cancels_ref          -> cancel_last_order_after_9999_cancels_ref
+best_bid_after_9999_same_level_lazy_cancels -> best_bid_after_9999_same_level_cancels
+```
+
+What the results show:
+
+```text
+deep modify no longer scans the queue: 2.94 us -> 120 ns
+matching reads the head order directly instead of a hash remove and re-insert
+best price is the first key of the ladder, with no scan for non-empty levels
+```
+
+What they do not show:
+
+```text
+The "before" column already includes the single-use order id check, which
+adds one HashSet insert to every add. Against the 2026-09-06 run below, which
+has no such check, add-heavy results are roughly level rather than faster:
+add_one_resting_order 110 ns -> 114 ns, two_sided_1000_orders 91 us -> 98 us.
+The two runs used different compiler versions and machine conditions, so that
+cross-run comparison is only indicative.
+```
+
+Next candidate from these numbers: replace the `seen_order_ids` set with a
+single highest-id comparison once the engine assigns order ids itself.
+
+## 2026-09-06 Baseline (previous design)
+
+The rest of this file was measured on the `VecDeque` + lazy-cancel design and
+describes that design.
+
 ## Latest Run
 
 ```text
