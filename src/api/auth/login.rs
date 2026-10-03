@@ -12,6 +12,7 @@ use std::sync::LazyLock;
 use tokio::task;
 use uuid::Uuid;
 
+use super::status::UserStatus;
 use crate::api::{error::ApiError, state::AppState};
 
 // A fixed duration is sufficient initially; configuration can come later.
@@ -124,6 +125,15 @@ async fn verify_password(password: String, stored_hash: Option<String>) -> Resul
     }
 }
 
+/// Converts the stored status, treating an unknown value as corrupted data.
+fn parse_status(value: &str) -> Result<UserStatus, ApiError> {
+    UserStatus::parse(value).ok_or_else(|| {
+        tracing::error!(status = %value, "login user has an unknown status");
+
+        ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "failed to process login")
+    })
+}
+
 /// Generates a cryptographically secure 256-bit bearer token.
 fn generate_session_token() -> Result<GeneratedToken, ApiError> {
     let mut random_bytes = [0_u8; 32];
@@ -177,7 +187,7 @@ pub async fn login(
     };
 
     // Only reveal account status after valid credentials were supplied.
-    if user.status != "active" {
+    if parse_status(&user.status)? != UserStatus::Active {
         return Err(ApiError::new(
             StatusCode::FORBIDDEN,
             "account is not active",

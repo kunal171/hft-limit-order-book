@@ -10,6 +10,7 @@ pub mod logout;
 pub mod role;
 pub mod sessions;
 pub mod signup;
+pub mod status;
 
 /// Builds public authentication routes and protected session routes.
 pub fn router(state: AppState) -> Router<AppState> {

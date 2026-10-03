@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use super::role::UserRole;
+use super::{role::UserRole, status::UserStatus};
 use crate::api::{error::ApiError, state::AppState};
 
 /// Trusted identity produced after validating a database session.
@@ -123,7 +123,17 @@ pub async fn require_authenticated(
             ApiError::new(StatusCode::UNAUTHORIZED, "invalid or expired session")
         })?;
 
-    if session.status != "active" {
+    // The CHECK constraint makes an unknown status a data error, not a client error.
+    let status = UserStatus::parse(&session.status).ok_or_else(|| {
+        tracing::error!(status = %session.status, "session user has an unknown status");
+
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to validate session",
+        )
+    })?;
+
+    if status != UserStatus::Active {
         return Err(ApiError::new(
             StatusCode::FORBIDDEN,
             "account is not active",
