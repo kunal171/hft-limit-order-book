@@ -2,7 +2,7 @@ mod common;
 
 use axum::http::{Method, StatusCode};
 use common::{empty_request, json_request, login, read_json, send, signup};
-use limit_order_book::api::{router, state::AppState};
+use limit_order_book::api::{rate_limit::RateLimitConfig, router, state::AppState};
 use serde_json::{Value, json};
 use sqlx::PgPool;
 
@@ -181,4 +181,41 @@ async fn admin_route_requires_admin_role(pool: PgPool) {
         .expect("admin-created user should exist");
 
     assert_eq!(created_role, "system");
+}
+
+#[sqlx::test]
+async fn repeated_login_attempts_are_rate_limited(pool: PgPool) {
+    // No refill, so the outcome does not depend on how long the test takes.
+    let app = router(AppState::with_auth_rate_limit(
+        pool.clone(),
+        RateLimitConfig {
+            burst: 3,
+            refill_per_second: 0.0,
+        },
+    ));
+
+    let attempt = || {
+        json_request(
+            Method::POST,
+            "/auth/login",
+            json!({ "email": "nobody@example.com", "password": "not-the-right-password" }),
+            None,
+        )
+    };
+
+    for _ in 0..3 {
+        let response = send(&app, attempt()).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    let limited = send(&app, attempt()).await;
+    assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    // Routes outside the limiter are unaffected.
+    let logout = send(
+        &app,
+        empty_request(Method::POST, "/auth/logout", Some("any-token")),
+    )
+    .await;
+    assert_eq!(logout.status(), StatusCode::NO_CONTENT);
 }

@@ -9,9 +9,10 @@ known limits, and the decision about when to move it out of process.
 
 Code: `src/api/rate_limit.rs`. State: `AppState::auth_rate_limiter`.
 
-Status: the limiter and its unit tests are in. Applying it to `/auth/signup`
-and `/auth/login`, enabling connect info in `src/bin/api.rs`, and the
-integration test are the next commit.
+Status: applied to `/auth/signup` and `/auth/login`. The server is started with
+connect info in `src/bin/api.rs`, and `repeated_login_attempts_are_rate_limited`
+in `tests/auth_api.rs` covers it end to end. `/auth/logout` and `/auth/me` are
+not limited.
 
 Algorithm: token bucket per client IP address.
 
@@ -100,7 +101,6 @@ client IP, and accept that header only from the trusted proxy's address.
 ## Follow-Up List
 
 ```text
-apply the limiter to signup and login (next commit)
 per-email limit on login, alongside the per-IP limit
 Retry-After header on 429 responses
 Redis-backed limiter when the API runs as more than one process

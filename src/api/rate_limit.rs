@@ -59,7 +59,7 @@ impl RateLimiter {
             buckets: Arc::new(Mutex::new(HashMap::new())),
         }
     }
-    
+
     /// Takes one token for `client`. Returns false when none are left.
     ///
     /// `now` is a parameter so tests can move time forward without sleeping.

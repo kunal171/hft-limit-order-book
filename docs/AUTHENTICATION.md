@@ -167,13 +167,12 @@ Done since this list was written:
 ```text
 dummy password verification for unknown-email timing resistance
 integration test that unknown email and wrong password look identical
-per-IP token-bucket limiter for signup and login (see RATE_LIMITING.md)
+per-IP token-bucket limiter on signup and login (see RATE_LIMITING.md)
 ```
 
 Still open:
 
 ```text
-apply the limiter to the signup and login routes
 per-email login limit and Redis-backed limiting (see RATE_LIMITING.md)
 TLS at the deployment boundary
 secret management outside local .env files

@@ -59,9 +59,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     tracing::info!(%addr, "API server listening");
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    // Connect info gives the rate limiter each client's address.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
+
     Ok(())
 }
 
