@@ -8,6 +8,7 @@ pub mod auth;
 pub mod error;
 mod health;
 mod instruments;
+pub mod rate_limit;
 pub mod state;
 
 /// Builds the complete HTTP router.
