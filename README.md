@@ -14,8 +14,8 @@ networking, databases, and analytics kept outside the matching hot path.
 |---|---|
 | Matching engine (add, cancel, modify, events, replay) | Done |
 | Simulator, metrics, Criterion benchmarks | Done |
-| HTTP API: auth, sessions, accounts, admin instruments | Done |
-| Observability: Prometheus metrics | In progress |
+| HTTP API: auth, sessions, rate limiting, accounts, instruments | Done |
+| Observability: Prometheus metrics on a separate listener | Done |
 | API connected to the engine (order entry) | Not started |
 
 The engine and the API are currently two separate halves. Wiring them together
@@ -95,6 +95,7 @@ Configuration is read from `.env`:
 ```env
 DATABASE_URL=postgres://postgres:postgres@localhost:5433/limit_order_book
 API_ADDR=127.0.0.1:3000
+METRICS_ADDR=127.0.0.1:9100
 ```
 
 Set `RUST_LOG` to change log levels for one run, for example
@@ -104,7 +105,6 @@ in-flight requests before exiting on Ctrl-C or `SIGTERM`.
 | Route | Access | Purpose |
 |---|---|---|
 | `GET /health` | Public | API and database check |
-| `GET /metrics` | Public | Prometheus metrics |
 | `POST /auth/signup` | Public | Create a trader |
 | `POST /auth/login` | Public | Create a session, returns a bearer token |
 | `POST /auth/logout` | Bearer token | Revoke the session |
@@ -119,9 +119,27 @@ Passwords are stored as Argon2 hashes. Session tokens are 256-bit random
 values; only their SHA-256 digest is stored. Details are in
 [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md).
 
-Prometheus runs at `http://localhost:9090` and scrapes the API on port 3000.
-Because it runs in Docker, the API must listen on an address the container can
-reach, so `API_ADDR=127.0.0.1:3000` is not scraped.
+Signup and login are rate limited per client IP (429 when exceeded); see
+[docs/RATE_LIMITING.md](docs/RATE_LIMITING.md).
+
+## Metrics
+
+`GET /metrics` is served on its own listener, `METRICS_ADDR`, not on the API
+port. API clients cannot read it, and Prometheus can be allowed to reach it
+without exposing the API.
+
+Prometheus runs at `http://localhost:9090` and scrapes
+`host.docker.internal:9100`. Because Prometheus runs in Docker, the metrics
+listener must accept connections from the Docker bridge, for example
+`METRICS_ADDR=0.0.0.0:9100` on a development machine. `API_ADDR` can stay on
+`127.0.0.1`.
+
+| Metric | Meaning |
+|---|---|
+| `axum_http_requests_total`, `axum_http_requests_duration_seconds` | Requests and latency by method, status, and route pattern; unknown paths share the `unmatched` label |
+| `lob_auth_login_attempts_total{outcome}` | Logins by `success`, `invalid_credentials`, `inactive`, `invalid_request`, `error` |
+| `lob_auth_rate_limited_total` | Signup and login requests rejected by the rate limiter |
+| `lob_database_health_checks_total{outcome}`, `lob_database_health_check_duration_seconds` | Database checks made by `/health` |
 
 ## Tests and benchmarks
 

@@ -28,6 +28,10 @@ no peer address    one shared bucket (requests sent straight into the router,
 A person who mistypes a password a few times is never blocked. A script is
 held to about 12 attempts a minute.
 
+Rejections are counted in `lob_auth_rate_limited_total`. Rejected requests
+never reach the login handler, so they do not appear in
+`lob_auth_login_attempts_total`.
+
 Implementation choices:
 
 ```text
