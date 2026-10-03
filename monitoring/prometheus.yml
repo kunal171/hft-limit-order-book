@@ -7,5 +7,6 @@ scrape_configs:
 
     static_configs:
       # Prometheus runs inside Docker while the Rust API runs on the host.
+      # Metrics have their own listener (METRICS_ADDR), separate from the API.
       - targets:
-          - "host.docker.internal:3000"
+          - "host.docker.internal:9100"

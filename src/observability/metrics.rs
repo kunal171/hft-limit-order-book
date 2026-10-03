@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use ::metrics::{Unit, describe_counter, describe_histogram};
 use axum_prometheus::{
-    AXUM_HTTP_REQUESTS_DURATION_SECONDS, PrometheusMetricLayer, PrometheusMetricLayerBuilder,
+    AXUM_HTTP_REQUESTS_DURATION_SECONDS, EndpointLabel, PrometheusMetricLayer,
+    PrometheusMetricLayerBuilder,
     metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle},
     utils::SECONDS_DURATION_BUCKETS,
 };
@@ -42,9 +43,11 @@ pub fn initialize_prometheus() -> (PrometheusMetricLayer<'static>, PrometheusHan
         .expect("metrics recorder should only be installed once");
 
     let (prometheus_layer, _) = PrometheusMetricLayerBuilder::new()
-        // Prometheus already monitors scrape success using its `up` metric.
-        // Ignoring this route prevents scrapes from affecting API statistics.
-        .with_ignore_pattern("/metrics")
+        // Label by route pattern. Unmatched paths share one label, otherwise
+        // every random URL a client sends would create a new time series.
+        .with_endpoint_label_type(EndpointLabel::MatchedPathWithFallbackFn(|_| {
+            "unmatched".to_string()
+        }))
         .with_metrics_from_fn(|| metric_handle.clone())
         .build_pair();
 
