@@ -889,11 +889,12 @@ per-IP rate limiting on signup and login
 graceful shutdown and RUST_LOG-driven log levels
 ```
 
-Remaining before Phase 13:
+Moved into Phase 13:
 
 ```text
 expose validated instrument configuration as an in-memory snapshot the engine
-runtime can read without querying PostgreSQL
+runtime can read without querying PostgreSQL; built when the API is wired to
+the runtime, since the runtime is what consumes it
 ```
 
 Deferred, with reasons:
