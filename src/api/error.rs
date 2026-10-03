@@ -21,6 +21,11 @@ impl ApiError {
     pub fn new(status: StatusCode, message: &'static str) -> Self {
         Self { status, message }
     }
+
+    /// HTTP status this error will be returned with.
+    pub fn status(&self) -> StatusCode {
+        self.status
+    }
 }
 
 impl IntoResponse for ApiError {

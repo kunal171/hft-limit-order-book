@@ -14,7 +14,10 @@ use axum::{
     response::Response,
 };
 
-use crate::api::{error::ApiError, state::AppState};
+use crate::{
+    api::{error::ApiError, state::AppState},
+    observability::metrics::AUTH_RATE_LIMITED_TOTAL,
+};
 
 /// Above this many tracked clients, idle buckets are dropped.
 const MAX_TRACKED_CLIENTS: usize = 10_000;
@@ -114,6 +117,8 @@ pub async fn limit_auth_requests(
         .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
 
     if !state.auth_rate_limiter.try_acquire(client, Instant::now()) {
+        ::metrics::counter!(AUTH_RATE_LIMITED_TOTAL).increment(1);
+
         return Err(ApiError::new(
             StatusCode::TOO_MANY_REQUESTS,
             "too many requests, try again later",

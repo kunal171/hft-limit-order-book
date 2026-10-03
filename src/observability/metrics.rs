@@ -10,6 +10,10 @@ use axum_prometheus::{
 
 pub const DATABASE_HEALTH_CHECKS_TOTAL: &str = "lob_database_health_checks_total";
 
+pub const AUTH_LOGIN_ATTEMPTS_TOTAL: &str = "lob_auth_login_attempts_total";
+
+pub const AUTH_RATE_LIMITED_TOTAL: &str = "lob_auth_rate_limited_total";
+
 pub const DATABASE_HEALTH_CHECK_DURATION_SECONDS: &str =
     "lob_database_health_check_duration_seconds";
 
@@ -52,6 +56,18 @@ pub fn initialize_prometheus() -> (PrometheusMetricLayer<'static>, PrometheusHan
         .build_pair();
 
     // Add Prometheus HELP and TYPE metadata.
+    describe_counter!(
+        AUTH_LOGIN_ATTEMPTS_TOTAL,
+        Unit::Count,
+        "Login attempts grouped by outcome."
+    );
+
+    describe_counter!(
+        AUTH_RATE_LIMITED_TOTAL,
+        Unit::Count,
+        "Signup and login requests rejected by the rate limiter."
+    );
+
     describe_counter!(
         DATABASE_HEALTH_CHECKS_TOTAL,
         Unit::Count,

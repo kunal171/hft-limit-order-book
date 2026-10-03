@@ -13,7 +13,10 @@ use tokio::task;
 use uuid::Uuid;
 
 use super::status::UserStatus;
-use crate::api::{error::ApiError, state::AppState};
+use crate::{
+    api::{error::ApiError, state::AppState},
+    observability::metrics::AUTH_LOGIN_ATTEMPTS_TOTAL,
+};
 
 // A fixed duration is sufficient initially; configuration can come later.
 const SESSION_LIFETIME_HOURS: i64 = 12;
@@ -158,10 +161,32 @@ fn generate_session_token() -> Result<GeneratedToken, ApiError> {
     Ok(GeneratedToken { raw, hash })
 }
 
-/// Verifies credentials and creates a new database-backed session.
+/// Verifies credentials, creates a session, and counts the outcome.
 pub async fn login(
     State(state): State<AppState>,
     Json(request): Json<LoginRequest>,
+) -> Result<(StatusCode, Json<LoginResponse>), ApiError> {
+    let result = authenticate(state, request).await;
+
+    // Bounded labels only: never the email or user id.
+    let outcome = match &result {
+        Ok(_) => "success",
+        Err(error) => match error.status() {
+            StatusCode::UNAUTHORIZED => "invalid_credentials",
+            StatusCode::FORBIDDEN => "inactive",
+            StatusCode::BAD_REQUEST => "invalid_request",
+            _ => "error",
+        },
+    };
+    ::metrics::counter!(AUTH_LOGIN_ATTEMPTS_TOTAL, "outcome" => outcome).increment(1);
+
+    result
+}
+
+/// Verifies credentials and creates a new database-backed session.
+async fn authenticate(
+    state: AppState,
+    request: LoginRequest,
 ) -> Result<(StatusCode, Json<LoginResponse>), ApiError> {
     let email = request.email.trim().to_lowercase();
 
