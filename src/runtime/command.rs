@@ -37,11 +37,7 @@ pub struct SequencedCommand {
 }
 
 impl SequencedCommand {
-    pub fn new(
-        shard_id: ShardId,
-        sequence: EngineSequence,
-        command: EngineCommand,
-    ) -> Self {
+    pub fn new(shard_id: ShardId, sequence: EngineSequence, command: EngineCommand) -> Self {
         Self {
             schema_version: ENGINE_SCHEMA_VERSION,
             shard_id,
