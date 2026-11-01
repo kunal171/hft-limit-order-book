@@ -12,6 +12,7 @@ pub mod metrics;
 pub mod observability;
 pub mod replay;
 pub mod simulator;
+pub mod runtime;
 
 pub use domain::{BookEvent, BookSnapshot, Order, OrderId, Price, Quantity, Side, Trade};
 pub use engine::{EventMode, OrderBook, OrderBookConfig};
