@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Errors returned by the order book API.
@@ -5,7 +6,7 @@ use std::fmt;
 /// The matching logic currently returns `Ok(trades)` for valid orders. These
 /// variants are here so the next phase can add input validation without changing
 /// the public return type again.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OrderBookError {
     ZeroQuantity,
     DuplicateOrderId,

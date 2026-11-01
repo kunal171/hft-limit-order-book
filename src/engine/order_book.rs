@@ -146,6 +146,11 @@ impl OrderBook {
         &self.events
     }
 
+    /// Removes emitted events while retaining the vector's allocated capacity.
+    pub fn drain_events(&mut self) -> std::vec::Drain<'_, BookEvent> {
+        self.events.drain(..)
+    }
+
     /// Return a full snapshot of the current book state.
     ///
     /// Bids are returned from highest price to lowest price.
