@@ -1,5 +1,8 @@
 use crate::OrderBook;
-use super::{EngineSequence, ShardId};
+use super::{
+    ENGINE_SCHEMA_VERSION, EngineCommand, EngineEvent, EngineSequence,
+    SequencedCommand, SequencedEvent, ShardId,
+};
 
 pub struct EngineProcessor {
     shard_id: ShardId,
@@ -83,5 +86,47 @@ impl EngineProcessor {
                 EngineEvent::Rejected { reason },
             )]),
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Order, OrderBookError, Side};
+
+    #[test]
+    fn rejected_order_consumes_its_sequence() {
+        let mut processor = EngineProcessor::new(2);
+
+        // The command is correctly sequenced, but its quantity is invalid.
+        let rejected = processor
+            .process(SequencedCommand::new(
+                2,
+                1,
+                EngineCommand::Add(Order::new(10, Side::Buy, 100, 0)),
+            ))
+            .unwrap();
+
+        assert_eq!(rejected.len(), 1);
+        assert_eq!(
+            rejected[0].event,
+            EngineEvent::Rejected {
+                reason: OrderBookError::ZeroQuantity,
+            }
+        );
+
+        // Rejection used sequence 1, so the next valid command uses 2.
+        let accepted = processor
+            .process(SequencedCommand::new(
+                2,
+                2,
+                EngineCommand::Add(Order::new(11, Side::Buy, 100, 5)),
+            ))
+            .unwrap();
+
+        assert_eq!(accepted.len(), 1);
+        assert_eq!(accepted[0].sequence, 2);
+        assert_eq!(accepted[0].event_index, 0);
     }
 }
