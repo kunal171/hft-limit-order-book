@@ -16,11 +16,14 @@ networking, databases, and analytics kept outside the matching hot path.
 | Simulator, metrics, Criterion benchmarks | Done |
 | HTTP API: auth, sessions, rate limiting, accounts, instruments | Done |
 | Observability: Prometheus metrics on a separate listener | Done |
+| Phase 13 sequenced runtime | Paused on a separate branch; unmerged |
+| Phase 16 binary protocol lab | Design documented; implementation next |
 | API connected to the engine (order entry) | Not started |
 
-The engine and the API are currently two separate halves. Wiring them together
-through a sequenced single-writer runtime is the next major phase; see
-[docs/HFT_ROADMAP.md](docs/HFT_ROADMAP.md).
+The engine and the API are currently separate. We are learning binary protocol
+design and latency measurement before finishing their connection. This lab
+does not expose live order entry or durable execution. See
+[docs/PHASE_16_17_LEARNING_PLAN.md](docs/PHASE_16_17_LEARNING_PLAN.md).
 
 ## Layout
 
@@ -154,6 +157,8 @@ cargo clippy --all-targets
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — current and target design
 - [docs/CURRENT_ARCHITECTURE_FLOWCHARTS.md](docs/CURRENT_ARCHITECTURE_FLOWCHARTS.md) — flow diagrams
 - [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/HFT_ROADMAP.md](docs/HFT_ROADMAP.md) — phases and next steps
+- [docs/BINARY_ORDER_PROTOCOL.md](docs/BINARY_ORDER_PROTOCOL.md) — versioned wire layout, validation, and codec test plan
+- [docs/PHASE_16_17_LEARNING_PLAN.md](docs/PHASE_16_17_LEARNING_PLAN.md) — guided protocol and low-latency labs
 - [docs/POSTGRES_MARKET_DATA_ROADMAP.md](docs/POSTGRES_MARKET_DATA_ROADMAP.md) — database and pricing plan
 - [docs/PERFORMANCE_BASELINE.md](docs/PERFORMANCE_BASELINE.md) — benchmark results
 - [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) — auth design

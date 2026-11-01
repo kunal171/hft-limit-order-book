@@ -1,6 +1,10 @@
 # Limit Order Book Project Roadmap
 
-This project will be built in phases. Each phase gets its own Git branch, and we merge it before starting the next phase.
+This project is built in phases. Each slice gets its own Git branch. The normal
+flow is to merge one slice before starting the next; the current protocol and
+latency labs are an independent learning detour while Phases 13-15 are paused.
+See [`PHASE_16_17_LEARNING_PLAN.md`](PHASE_16_17_LEARNING_PLAN.md) for the
+revised order, prerequisites, exercises, and completion criteria.
 
 The long-term vision is:
 
@@ -33,15 +37,15 @@ We will use one branch per phase.
 Basic flow:
 
 ```bash
-git checkout main
-git pull
-git checkout -b phase-01-matching-core
+git switch master
+git pull --ff-only
+git switch -c phase-01-matching-core
 
 # build only that phase
 # test it
 # commit it
 
-git checkout main
+git switch master
 git merge phase-01-matching-core
 git branch -d phase-01-matching-core
 ```
@@ -49,7 +53,7 @@ git branch -d phase-01-matching-core
 For every phase:
 
 ```text
-1. Create a new branch from main.
+1. Create a new branch from master.
 2. Build only the planned scope for that phase.
 3. Add tests/docs for that phase.
 4. Run tests.
@@ -78,6 +82,14 @@ phase-14-durable-journal
 phase-15-event-pipeline
 phase-16-binary-gateway
 phase-17-advanced-latency
+```
+
+Current detour:
+
+```text
+phase-13-engine-commands   pushed and paused; unmerged processor work
+phase-16-binary-protocol   independent codec and benchmark lab from master
+phase-17-latency-lab       later branch from master after the codec lab merges
 ```
 
 ## Current Starting Point
@@ -909,6 +921,10 @@ Redis rate limiting         only needed with more than one API process
 
 ## Phase 13: Sequenced Single-Writer Runtime
 
+Status: paused after command/event types and a synchronous processor were
+developed on `phase-13-engine-commands`. They are not on `master`. Dedicated
+thread ownership, bounded queues, instrument routing, and timing remain.
+
 Goal:
 
 ```text
@@ -944,6 +960,8 @@ p50, p95, p99, and p999 latency are recorded
 
 ## Phase 14: Durable Journal And Recovery
 
+Status: paused. The Phase 16 transport lab cannot promise durable orders.
+
 Goal:
 
 ```text
@@ -970,6 +988,8 @@ canonical orders/trades cannot be silently dropped
 ```
 
 ## Phase 15: Kafka And Query Projections
+
+Status: paused. The binary codec does not need Kafka or database projections.
 
 Goal:
 
@@ -1007,6 +1027,14 @@ Kafka/Postgres outages do not mutate matching behavior
 
 ## Phase 16: Binary Order Gateway
 
+Current independent slice: the versioned 56-byte request codec, validation,
+round-trip tests, and JSON-versus-binary parsing benchmarks described in
+[`BINARY_ORDER_PROTOCOL.md`](BINARY_ORDER_PROTOCOL.md). A later loopback TCP
+experiment may acknowledge successful decoding only. A full order gateway
+still depends on Phase 13's bounded runtime, ownership, and routing. The
+steps and prerequisites are in
+[`PHASE_16_17_LEARNING_PLAN.md`](PHASE_16_17_LEARNING_PLAN.md).
+
 Goal:
 
 ```text
@@ -1034,6 +1062,12 @@ stage-level tail latency is reported
 
 ## Phase 17: Advanced Latency Engineering
 
+Current independent slice: baseline/profiling, allocation and latency
+distribution experiments on the existing in-memory engine. Test SIMD only on
+a measured batch-oriented workload. Kernel bypass/DPDK remains research until
+the TCP path is measured and hardware access is available. This slice does
+not claim to complete the full phase exit criteria.
+
 Start only after profiles show a measurable bottleneck:
 
 ```text
@@ -1043,6 +1077,7 @@ busy polling versus parked threads
 cache-line padding and false-sharing tests
 fixed-capacity pools and allocation-free command processing
 alternate bounded price ladder
+SIMD experiments for measured batch-oriented work
 huge pages
 kernel bypass/DPDK research
 warm standby or replicated deterministic state machine

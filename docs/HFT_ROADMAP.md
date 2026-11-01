@@ -7,6 +7,12 @@ trading-system principles; it does not claim production-exchange readiness.
 The canonical component design is in [`ARCHITECTURE.md`](ARCHITECTURE.md). The
 phase-level project plan is in [`ROADMAP.md`](ROADMAP.md).
 
+Current learning order: Phases 13-15 are paused; an independent Phase 16
+binary codec lab and Phase 17 measurement lab come first. Read
+[`PHASE_16_17_LEARNING_PLAN.md`](PHASE_16_17_LEARNING_PLAN.md) and
+[`BINARY_ORDER_PROTOCOL.md`](BINARY_ORDER_PROTOCOL.md). The full single-writer,
+durability, and gateway goals below remain the target architecture.
+
 ## Core Rule
 
 ```text
@@ -175,6 +181,7 @@ Only optimize after profiling:
 remove remaining hot-path allocation/cloning
 preallocate command/event buffers
 compare BTreeMap with a bounded direct-index price ladder
+try SIMD on measured batch-oriented parsing/validation or array workloads
 pin gateway, engine, journal, and publisher threads
 test busy polling, cache-line padding, and NUMA placement
 research huge pages and kernel bypass when networking is the measured bottleneck
