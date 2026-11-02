@@ -1,9 +1,9 @@
-# Authentication And Session Design
+# Authentication And Sessions
 
-Authentication belongs to the HTTP control plane. It must never add database,
-Redis, password hashing, or network work to the matching engine's hot path.
+The HTTP API handles authentication. The matching engine never hashes a
+password or looks up a session while matching an order.
 
-## Current Implementation
+## What Is Implemented
 
 ```text
 users                 identity, status, and role

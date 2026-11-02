@@ -1,9 +1,9 @@
 # Postgres, Users, And Market Pricing Roadmap
 
-This document explains how PostgreSQL, users/traders, instruments, and
-reference/oracle pricing should fit into the limit order book project.
+PostgreSQL holds users, accounts, instruments, and historical market data.
+The matching engine does not query it for each order.
 
-Core rule:
+The boundary:
 
 ```text
 Postgres is for persistence, analytics, dashboards, replay, and audit.
@@ -19,9 +19,9 @@ orders. Canonical commands/events first enter the configured journal or
 replicated-log durability boundary; asynchronous consumers then build
 PostgreSQL projections.
 
-## Why Add Postgres
+## What Postgres Stores
 
-Postgres makes the project feel closer to a real backend/trading system.
+Use it for state that must survive a process restart or support queries.
 
 Use Postgres for:
 
@@ -49,18 +49,14 @@ per-order synchronous logging in low-latency mode
 recovering acknowledged work that was never durably journaled
 ```
 
-Why:
-
-```text
-A database call has network, lock, and disk costs. The order book needs
+A database call adds network, lock, and sometimes disk delay. Matching needs
 predictable in-memory latency.
-```
 
-## Important Concepts
+## Terms Used Here
 
 ### User, Trader, Account, Session
 
-A real trading system usually separates these ideas:
+These names refer to different things:
 
 ```text
 user      -> human or organization identity
@@ -147,12 +143,8 @@ change the trade price after a match
 force the book to match at oracle price
 ```
 
-Why:
-
-```text
-Matching must follow the submitted limit orders. The oracle is supporting data,
-not the matching rule.
-```
+Matching follows submitted limit orders. A reference price is supporting
+data, not a replacement for those orders.
 
 For stocks, "oracle" usually means:
 
@@ -188,13 +180,8 @@ Bad:
 price = 100.25 as f64
 ```
 
-Why:
-
-```text
-floating point values can introduce rounding errors
-financial systems need exact integer arithmetic
-different assets need different decimal precision
-```
+Integer values avoid floating-point rounding in order checks. Each instrument
+can define its own scale and valid tick size.
 
 For stocks:
 
@@ -215,20 +202,14 @@ OrderBook still uses integer ticks internally.
 Postgres stores the scale needed to display/interpret those ticks.
 ```
 
-## Suggested Tables
+## Proposed Tables
 
-This is a design guide. Do not add all tables at once. Build one thin slice at a
-time.
+These are sketches, not the current migrations. Add a table only when a feature
+needs it; check `migrations/` for the schema that actually runs.
 
 ### users
 
-Purpose:
-
-```text
-store who can submit orders
-```
-
-Sketch:
+Users identify people who can log in and, later, submit orders.
 
 ```sql
 CREATE TABLE users (
@@ -240,22 +221,11 @@ CREATE TABLE users (
 );
 ```
 
-Why:
-
-```text
-orders need ownership
-future APIs need authentication and authorization
-```
+Order ownership and API permissions both need a user identity.
 
 ### accounts
 
-Purpose:
-
-```text
-represent a trading account owned by a user
-```
-
-Sketch:
+An account belongs to a user and can carry its own limits or balances.
 
 ```sql
 CREATE TABLE accounts (
@@ -267,22 +237,12 @@ CREATE TABLE accounts (
 );
 ```
 
-Why separate from users:
-
-```text
-one user can have multiple accounts
-risk limits and balances are usually account-level
-```
+Keeping it separate allows one user to have more than one account without
+duplicating their login identity.
 
 ### instruments
 
-Purpose:
-
-```text
-store what can be traded
-```
-
-Sketch:
+An instrument defines a market and its valid price and quantity increments.
 
 ```sql
 CREATE TABLE instruments (
@@ -300,23 +260,11 @@ CREATE TABLE instruments (
 );
 ```
 
-Why:
-
-```text
-the same engine can later support many markets
-tick_size prevents invalid prices
-lot_size prevents invalid quantities
-```
+The tick and lot sizes reject invalid order values before matching.
 
 ### runs
 
-Purpose:
-
-```text
-store one simulation/backtest/benchmark run
-```
-
-Sketch:
+A run groups one simulation or benchmark and its outputs.
 
 ```sql
 CREATE TABLE runs (
@@ -330,21 +278,13 @@ CREATE TABLE runs (
 );
 ```
 
-Why:
-
-```text
-all orders/trades/snapshots/metrics should belong to a run
-```
+Keeping a run ID on results makes it possible to compare or replay one run
+without mixing in another.
 
 ### orders
 
-Purpose:
-
-```text
-persist order commands/results for audit and analysis
-```
-
-Sketch:
+Persisted orders support audit and later analysis; they are not read for every
+matching decision.
 
 ```sql
 CREATE TABLE orders (
@@ -372,22 +312,12 @@ CREATE INDEX orders_account_created_idx ON orders (account_id, created_at);
 CREATE UNIQUE INDEX orders_shard_sequence_idx ON orders (shard_id, sequence_number);
 ```
 
-Why:
-
-```text
-sequence_number gives deterministic replay order
-account index helps query a user's trading activity
-```
+The sequence number preserves engine order. The account index supports a
+trader's activity history.
 
 ### trades
 
-Purpose:
-
-```text
-persist executions produced by the matching engine
-```
-
-Sketch:
+Trades are executions produced by the engine.
 
 ```sql
 CREATE TABLE trades (
@@ -412,22 +342,11 @@ CREATE INDEX trades_instrument_time_idx ON trades (instrument_id, executed_at);
 CREATE UNIQUE INDEX trades_shard_sequence_idx ON trades (shard_id, sequence_number);
 ```
 
-Why:
-
-```text
-trades are the main output of the matching engine
-time and sequence indexes support analytics
-```
+The time and sequence indexes support history queries and reconciliation.
 
 ### book_snapshots
 
-Purpose:
-
-```text
-store final or periodic book state for dashboards/debugging
-```
-
-Sketch:
+Snapshots store a periodic or final view of the book.
 
 ```sql
 CREATE TABLE book_snapshots (
@@ -443,21 +362,12 @@ CREATE TABLE book_snapshots (
 );
 ```
 
-Why:
-
-```text
-dashboards should not have to rebuild every book state from raw events
-```
+They let dashboards show book state without replaying every event on each
+request.
 
 ### run_metrics
 
-Purpose:
-
-```text
-store summary metrics for one run
-```
-
-Sketch:
+Run metrics hold summary values for one run.
 
 ```sql
 CREATE TABLE run_metrics (
@@ -473,21 +383,12 @@ CREATE TABLE run_metrics (
 );
 ```
 
-Why store VWAP as ticks:
-
-```text
-keeps metric output integer-based and avoids f64 rounding in persisted data
-```
+VWAP remains in integer ticks to avoid persisting floating-point rounding.
 
 ### reference_prices
 
-Purpose:
-
-```text
-store stock/crypto reference prices from external sources
-```
-
-Sketch:
+Reference prices come from external stock or crypto sources. They inform risk
+checks and analysis; they do not set the price of a matched trade.
 
 ```sql
 CREATE TABLE reference_prices (
@@ -509,13 +410,8 @@ CREATE INDEX reference_prices_latest_idx
 ON reference_prices (instrument_id, source, observed_at DESC);
 ```
 
-Why:
-
-```text
-we can compare executed prices against a trusted external market price
-we can detect stale or delayed prices
-we can build slippage and mark-price analysis later
-```
+The source and timestamps make stale prices visible. Later, these prices can
+support mark-price and slippage analysis.
 
 Important validation:
 
@@ -699,23 +595,13 @@ production-grade market data feeds
 complex risk engine
 ```
 
-This keeps the project moving and still teaches the right backend ideas.
+## Where The Pieces Fit
 
-## Interview Explanation
+The book stays in memory for predictable matching. PostgreSQL already stores
+users, accounts, instruments, and sessions. Runs, orders, trades, snapshots,
+metrics, and reference prices are planned here, not all implemented. External
+prices may support risk checks and analysis but do not change a matched trade.
 
-Good answer:
-
-```text
-The order book itself stays in memory because matching needs deterministic low
-latency. Postgres stores the durable record: users, instruments, runs, orders,
-trades, snapshots, metrics, and reference prices. External prices are used for
-risk and analytics, not for changing the matching result.
-```
-
-Key trade-off:
-
-```text
-Putting Postgres in the hot path gives stronger immediate durability, but it
-adds latency and lock contention. For this project, we keep matching in memory
-and persist results outside the direct matching function.
-```
+Keeping PostgreSQL out of the matching call avoids a database round trip per
+order. It also means that acknowledged orders need a separate durable journal
+before a database projection can be trusted for recovery.

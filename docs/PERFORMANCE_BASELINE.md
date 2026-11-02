@@ -1,16 +1,8 @@
 # Performance Baseline
 
-This file records the saved performance baseline for the HFT-style systems
-phase.
-
-Purpose:
-
-```text
-measure first, optimize second
-```
-
-Any future optimization should compare against this file before we decide
-whether the change actually helped.
+These are measured results, not latency guarantees. Compare a change with the
+same workload, build profile, machine, and event mode before calling it an
+improvement.
 
 ## Arena Order Book Comparison
 
@@ -358,7 +350,7 @@ two_sided_1000_orders   time:   [54.130 us 54.422 us 54.754 us]
                         Performance has improved.
 ```
 
-Meaning:
+Read it this way:
 
 ```text
 two_sided_1000_orders
@@ -537,13 +529,9 @@ EventMode::TradesOnly records only trade events.
 EventMode::Disabled records no events.
 ```
 
-Why:
-
-```text
-Event replay is useful for debugging, audit, Windmill, and AI analysis.
-But low-latency benchmarks should not always pay for event clones and an
-unbounded in-memory event log.
-```
+Full events help with replay and debugging, but cloning them adds work and an
+in-memory event vector can grow without bound. Benchmarks compare the event
+modes so that cost stays visible.
 
 Current design:
 

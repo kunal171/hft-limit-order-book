@@ -1,12 +1,10 @@
 # Limit Order Book Project Roadmap
 
-This project is built in phases. Each slice gets its own Git branch. The normal
-flow is to merge one slice before starting the next; the current protocol and
-latency labs are an independent learning detour while Phases 13-15 are paused.
-See [`PHASE_16_17_LEARNING_PLAN.md`](PHASE_16_17_LEARNING_PLAN.md) for the
-revised order, prerequisites, exercises, and completion criteria.
+Each phase has its own branch. Phases 13-15 are paused while we work on a
+binary codec and latency measurements. The current order is in
+[`PHASE_16_17_LEARNING_PLAN.md`](PHASE_16_17_LEARNING_PLAN.md).
 
-The long-term vision is:
+The planned build order:
 
 ```text
 Rust matching engine
@@ -23,7 +21,7 @@ Rust matching engine
 -> AI/pgvector analysis layer later
 ```
 
-Important project rule:
+Keep this boundary throughout the project:
 
 ```text
 The matching hot path stays Rust-only, deterministic, and low-latency.
@@ -92,1043 +90,162 @@ phase-16-binary-protocol   independent codec and benchmark lab from master
 phase-17-latency-lab       later branch from master after the codec lab merges
 ```
 
-## Current Starting Point
-
-The project already has a small Rust order book structure:
-
-```text
-src/lib.rs
-src/types.rs
-src/order.rs
-src/trade.rs
-src/order_book.rs
-src/main.rs
-```
-
-Current concepts already introduced:
-
-```text
-Order
-Trade
-Side
-Price
-Quantity
-OrderBook
-BTreeMap
-VecDeque
-best_bid
-best_ask
-price-time priority
-partial fills
-FIFO at same price
-```
-
-Before starting the next phase, understand this flow:
+## Phases 1-6: The Matching Engine
 
-```text
-incoming order
--> check opposite side
--> match if prices cross
--> generate trades
--> rest leftover quantity in the book
-```
-
-## Phase 1: Matching Core
-
-Branch:
-
-```text
-phase-01-matching-core
-```
-
-Goal:
-
-```text
-Build a correct basic limit order book.
-```
-
-Features:
-
-```text
-add limit buy order
-add limit sell order
-match buy against asks
-match sell against bids
-partial fills
-full fills
-best bid
-best ask
-trade generation
-FIFO matching at same price
-```
-
-Important algorithm: price-time priority.
-
-Meaning:
-
-```text
-Better price wins first.
-If price is equal, older order wins first.
-```
+These phases built the engine and the tools used to check it. The early
+`BTreeMap<Price, VecDeque<Order>>` design was later replaced by the arena
+described in [the architecture doc](ARCHITECTURE.md). It is not the current
+data structure.
 
-Why it matters:
+### Phase 1: Match Orders
 
-```text
-This is the standard matching rule for many limit order books.
-It makes matching deterministic and fair.
-```
+A buy checks the lowest available ask; a sell checks the highest bid. A trade
+happens only when their prices cross. Better prices match first, and orders at
+the same price match in arrival order. An unfilled remainder rests in the
+book. This is price-time priority.
 
-Data structures:
+The first version used a sorted `BTreeMap` for price levels and a
+`VecDeque` for FIFO order within each level. The sorted map made best-price
+lookup simple. The queue kept arrival order. See the current arena layout in
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
-```text
-BTreeMap<Price, VecDeque<Order>>
-```
-
-Why `BTreeMap`:
-
-```text
-It keeps prices sorted.
-Bids need highest price first.
-Asks need lowest price first.
-```
+### Phase 2: Check Correctness
 
-Why `VecDeque`:
+Tests cover an empty book, resting orders, partial and full fills, best-price
+selection, FIFO at one price, sweeps across levels, zero quantity, and reused
+order IDs. The aim is reproducibility: the same commands must lead to the
+same trades and final book.
 
-```text
-It preserves FIFO order at the same price level.
-We can pop from the front and push to the back efficiently.
-```
+### Phase 3: Cancel And Modify
 
-Exit criteria:
+Finding an order by scanning every price level would make cancellation
+expensive. The engine added an order-ID index for direct lookup. Today,
+modifying an order removes and resubmits it, so even a quantity decrease loses
+time priority and the changed order may match immediately.
 
-```text
-cargo test passes
-basic matching examples work
-you can explain price-time priority without reading notes
-```
+### Phase 4: Record Events And Replay
 
-## Phase 2: Correctness Tests
+The engine records accepted, cancelled, and modified orders plus trades.
+Replay rebuilds the book from saved events. That lets us compare a run with
+its reconstruction after a crash or code change. Event records in memory are
+not, by themselves, a durable journal; Phase 14 covers that gap.
 
-Branch:
+### Phase 5: Simulate Runs
 
-```text
-phase-02-correctness-tests
-```
+The CLI runs named scenarios and deterministic synthetic workloads. Saved
+`events.json`, `snapshot.json`, and `summary.json` make results easy to
+inspect and replay. Book and trade metrics include spread, depth, imbalance,
+and VWAP.
 
-Goal:
+### Phase 6: Benchmark
 
-```text
-Make the engine trustworthy before making it fast.
-```
+Criterion measures matching workloads and book shapes. The results and machine
+details are in [PERFORMANCE_BASELINE.md](PERFORMANCE_BASELINE.md). Mean timing
+is useful, but Phase 17 adds per-command p50/p95/p99/p999 measurements for
+tail latency. Keep setup work out of a timed operation.
 
-Test cases:
+## Phases 7-10: Analysis And Orchestration
 
-```text
-empty book
-buy rests when no ask exists
-sell rests when no bid exists
-buy matches lowest ask
-sell matches highest bid
-partial fill leaves remaining order
-full fill removes order
-same-price FIFO
-better price beats older worse price
-multiple price levels swept by one order
-zero quantity rejected
-duplicate order id rejected
-```
+This work is outside the matching loop. It can be paused without affecting the
+engine.
 
-Important concept: deterministic behavior.
+| Phase | State | What it covers |
+|---|---|---|
+| 7. LangChain analysis | Paused | Ideas for explaining completed runs using saved facts; no LLM integration yet |
+| 8. LangGraph workflow | Deferred | A resumable experiment loop with human approval before the next run |
+| 9. Windmill | Working wrapper | Scheduled or manual simulations through the Rust CLI; see [WINDMILL.md](WINDMILL.md) |
+| 10. Deterministic analyzer | Paused | A Python report from run artifacts; see [AI_WORK_PAUSE.md](AI_WORK_PAUSE.md) |
 
-Meaning:
+An explanation assistant must read actual orders, trades, snapshots, and
+metrics. It must not invent trades or decide how the book matches. Windmill
+starts jobs and stores results; it does not participate in each order's
+matching decision.
 
-```text
-Same input event sequence must always produce the same trades and final book state.
-```
+## Phase 11: Low-Latency Engine Work
 
-Why it matters:
+The engine's arena and price-level lists replaced lazy cancellation. Its
+benchmarks are recorded in [PERFORMANCE_BASELINE.md](PERFORMANCE_BASELINE.md).
+Further optimization needs a measured bottleneck and a correctness test.
+Matching remains in memory; databases, logging, and AI stay outside it.
 
-```text
-Trading systems must be replayable, debuggable, and auditable.
-```
+See [HFT_ROADMAP.md](HFT_ROADMAP.md) for the full list of experiments.
 
-Exit criteria:
+## Phase 12: PostgreSQL Control Plane
 
-```text
-tests describe business behavior clearly
-edge cases are covered
-no optimization work yet
-```
+The API now has migrations, admin bootstrap, signup and login, hashed sessions,
+account ownership, instrument management, rate limiting, metrics, and graceful
+shutdown. The engine is not connected to API order entry. The next runtime
+step needs a validated in-memory instrument snapshot, so matching never waits
+for a PostgreSQL query.
 
-## Phase 3: Cancel And Modify Orders
+Reference pricing and Redis caching are deferred. Neither is needed to match
+the current in-memory orders. [POSTGRES_MARKET_DATA_ROADMAP.md](POSTGRES_MARKET_DATA_ROADMAP.md)
+covers the proposed tables, reference prices, and later projections.
+[AUTHENTICATION.md](AUTHENTICATION.md) and [RATE_LIMITING.md](RATE_LIMITING.md)
+cover the implemented API behavior.
 
-Branch:
+## Phase 13: Single-Writer Runtime (Paused)
 
-```text
-phase-03-cancel-modify
-```
+The unmerged `phase-13-engine-commands` branch contains command/event types
+and a synchronous processor. It still needs:
 
-Goal:
+- A dedicated writer for each book shard and a monotonic sequence per shard.
+- Bounded queues with an explicit queue-full response.
+- Instrument routing and independent queue-wait and matching measurements.
+- Tests showing that replaying the same sequence gives the same result.
 
-```text
-Support real exchange-like order lifecycle operations.
-```
+One writer avoids a lock around the book. A bounded queue keeps overload from
+turning into unbounded memory use. Do not describe this runtime as implemented
+on `master`.
 
-Features:
+## Phase 14: Journal And Recovery (Not Started)
 
-```text
-cancel_order(order_id)
-modify_order(order_id, new_price, new_quantity)
-query_order(order_id)
-reject unknown order id
-reject modifying filled order
-preserve or reset priority depending on modify rule
-```
+Before promising durable order acceptance, define the acknowledgement point.
+Append commands or events to a versioned journal, record shard and sequence
+numbers, and recover from a snapshot plus later journal entries. Test
+truncation, corruption, and crash-restart behavior. PostgreSQL projections
+cannot replace this durability boundary.
 
-Important data-structure issue:
+## Phase 15: Kafka And Database Projections (Not Started)
 
-```text
-price -> queue of orders
-```
+Publish committed engine events from the journal, not from the matching call.
+Consumers write idempotently to PostgreSQL using shard and sequence as their
+identity. Commit offsets only after the database transaction commits. Monitor
+lag and failed records. A Kafka or PostgreSQL outage must not change matching.
 
-is good for matching, but bad for cancellation.
+Later, build market-state windows and versioned analytics features. Add
+pgvector only after ordinary queries and exact search have been measured.
 
-Why:
+## Phase 16: Binary Protocol (Current Lab)
 
-```text
-To cancel order 5000, we may need to scan every price level and every order.
-That is too slow for a serious order book.
-```
+Start with the 56-byte offline codec, malformed-frame tests, round trips, and
+binary-versus-JSON decode benchmarks in
+[BINARY_ORDER_PROTOCOL.md](BINARY_ORDER_PROTOCOL.md). A later loopback TCP test
+may report that a command decoded, **not** that it executed or was saved.
+A real gateway needs Phase 13 routing and ownership first.
 
-Likely extra index:
+Keep socket reads and decoding outside the matching thread. Reject malformed
+frames before queuing them. Measure receive, decode, queue, match, and response
+time separately once those stages exist.
 
-```text
-order_id -> side + price + location
-```
+## Phase 17: Latency Experiments (After The Codec Lab)
 
-Why:
+Record a fresh baseline before changing the engine. Measure p50, p95, p99,
+p999, throughput, and allocations for the same workload before and after each
+change. Profile first; then try one change at a time, such as buffer reuse,
+CPU affinity, or queue placement. SIMD needs a batch-shaped workload. Kernel
+bypass is research until network measurements and suitable hardware justify
+it. See [PHASE_16_17_LEARNING_PLAN.md](PHASE_16_17_LEARNING_PLAN.md).
 
-```text
-It allows direct lookup by order id.
-```
+A matching benchmark measured in nanoseconds is not an end-to-end order
+latency claim.
 
-Special concept: priority loss on modification.
+## Branch Checklist
 
-Usually:
+Before a merge, run formatting, tests, Clippy, and any relevant benchmark.
+Check that the branch contains only its intended change. Update the README
+and design docs when behavior changes, then merge and start the next branch
+from updated `master`.
 
-```text
-Reducing quantity may keep priority.
-Increasing quantity or changing price usually loses priority.
-```
-
-Exit criteria:
-
-```text
-cancel works
-modify works
-all behavior is tested
-you can explain why cancellation needs an index
-```
-
-## Phase 4: Event Log And Replay
-
-Branch:
-
-```text
-phase-04-event-log-replay
-```
-
-Goal:
-
-```text
-Make the order book replayable and explainable.
-```
-
-Events:
-
-```text
-OrderAccepted
-OrderRejected
-OrderCancelled
-OrderModified
-TradeExecuted
-BookSnapshot
-```
-
-Important concept: event sourcing.
-
-Meaning:
-
-```text
-Instead of only storing current state, store every event that changed the state.
-```
-
-Why it matters:
-
-```text
-debugging
-auditing
-replaying market sessions
-rebuilding book state
-feeding AI explanations later
-```
-
-Exit criteria:
-
-```text
-events are emitted for important actions
-book state can be rebuilt from events
-tests verify replay gives same final state
-```
-
-## Phase 5: Market Data Simulator
-
-Branch:
-
-```text
-phase-05-market-simulator
-```
-
-Goal:
-
-```text
-Feed market events into the order book and observe behavior.
-```
-
-Inputs:
-
-```text
-CSV file
-JSON file
-synthetic generated events
-```
-
-Outputs:
-
-```text
-trades.json
-book_snapshots.json
-metrics.json
-latency_report.json
-```
-
-Market microstructure concepts:
-
-```text
-bid
-ask
-spread
-mid price
-slippage
-liquidity
-order book imbalance
-VWAP
-market impact
-```
-
-Why this phase matters:
-
-```text
-The order book becomes more than unit tests.
-We can replay scenarios, generate metrics, and later let AI analyze runs.
-```
-
-Exit criteria:
-
-```text
-simulator can replay a file
-outputs are saved in a stable format
-basic metrics are produced
-```
-
-## Phase 6: Benchmarks
-
-Branch:
-
-```text
-phase-06-benchmarks
-```
-
-Goal:
-
-```text
-Measure performance before optimizing.
-```
-
-Metrics:
-
-```text
-orders per second
-average latency
-p50 latency
-p95 latency
-p99 latency
-p999 latency
-memory usage
-allocation count
-```
-
-Important concept: tail latency.
-
-Meaning:
-
-```text
-Average latency is not enough.
-p99 and p999 show the slowest important requests.
-```
-
-Example:
-
-```text
-average: 10 microseconds
-p99: 2 milliseconds
-```
-
-This means most events are fast, but some are dangerously slow.
-
-Exit criteria:
-
-```text
-benchmarks run locally
-baseline numbers are recorded
-no optimization without measurement
-```
-
-## Phase 7: AI Layer With LangChain
-
-Branch:
-
-```text
-phase-07-ai-langchain
-```
-
-Status:
-
-```text
-paused after deterministic analysis foundation
-```
-
-Goal:
-
-```text
-Use AI to analyze and explain order book runs.
-```
-
-Important rule:
-
-```text
-AI does not decide matching.
-AI only analyzes deterministic output from Rust.
-```
-
-Features:
-
-```text
-AI backtest report generator
-AI order explanation assistant
-AI edge-case scenario generator
-AI natural-language query layer over run outputs
-AI post-mortem generator for bad runs
-```
-
-Important concept: tool calling.
-
-Meaning:
-
-```text
-The AI calls deterministic tools instead of guessing.
-```
-
-Example tools:
-
-```text
-get_order(order_id)
-get_trades(order_id)
-get_book_snapshot(event_id)
-get_metrics(run_id)
-```
-
-Why it matters:
-
-```text
-Trading explanations must be grounded in actual data.
-The AI should explain evidence, not invent behavior.
-```
-
-Exit criteria:
-
-```text
-AI can summarize a run
-AI can explain an order from logs/events
-AI uses tools or structured data instead of guessing
-```
-
-Pause notes:
-
-```text
-docs/AI_WORK_PAUSE.md
-```
-
-## Phase 8: LangGraph Research Agent
-
-Branch:
-
-```text
-phase-08-langgraph-agent
-```
-
-Status:
-
-```text
-deferred until after HFT/system-strengthening work
-```
-
-Goal:
-
-```text
-Create a stateful AI workflow for repeated experiments.
-```
-
-Workflow:
-
-```text
-AI proposes experiment
--> Rust simulator runs it
--> metrics are collected
--> AI analyzes result
--> AI suggests next experiment
--> human approves or edits
--> workflow continues
-```
-
-Important concept: human-in-the-loop.
-
-Meaning:
-
-```text
-The AI can suggest actions, but important decisions require human approval.
-```
-
-Why LangGraph:
-
-```text
-It is useful for long-running, stateful, resumable agent workflows.
-```
-
-Possible agents:
-
-```text
-strategy experiment planner
-adversarial tester
-latency investigation assistant
-market scenario generator
-```
-
-Exit criteria:
-
-```text
-agent workflow has clear state
-human approval exists before next experiment
-results are persisted between steps
-```
-
-## Phase 9: Windmill Integration
-
-Branch:
-
-```text
-phase-09-windmill-integration
-```
-
-Goal:
-
-```text
-Use Windmill as the orchestration and dashboard layer.
-```
-
-Windmill should run:
-
-```text
-scheduled backtests
-parameter sweeps
-AI report generation
-benchmark jobs
-dataset ingestion
-dashboard views
-manual experiment triggers
-```
-
-Important rule:
-
-```text
-Windmill is not inside the matching hot path.
-Windmill coordinates jobs around the Rust engine.
-```
-
-Important concept: orchestration.
-
-Meaning:
-
-```text
-Windmill coordinates multiple steps, workers, schedules, and outputs.
-```
-
-Example flow:
-
-```text
-select dataset
--> run Rust simulation
--> store metrics
--> run LangChain report
--> display dashboard
-```
-
-Why Windmill:
-
-```text
-It gives us workflows, schedules, job logs, dashboards, and worker execution.
-```
-
-Exit criteria:
-
-```text
-Windmill can trigger a backtest
-Windmill can show or link to results
-AI report can be part of a Windmill flow
-```
-
-## Phase 10: AI Analysis Foundation
-
-Branch:
-
-```text
-phase-10-ai-langgraph-analysis
-```
-
-Status:
-
-```text
-paused
-```
-
-What exists:
-
-```text
-deterministic Python analyzer
-run-and-analyze shell wrapper
-AI module README
-pause/resume documentation
-```
-
-Pause notes:
-
-```text
-docs/AI_WORK_PAUSE.md
-```
-
-Why pause:
-
-```text
-The Rust matching engine should become a stronger low-latency systems project
-before we continue with LLM/LangGraph work.
-```
-
-## Phase 11: HFT-Style Systems And Optimization
-
-Branch:
-
-```text
-phase-11-hft-systems
-```
-
-Current priority:
-
-```text
-resume here before continuing LangChain/LangGraph
-```
-
-Goal:
-
-```text
-Learn low-latency engineering after correctness and measurement exist.
-```
-
-Topics:
-
-```text
-cache-friendly data layout
-pre-allocation
-avoiding heap allocations
-single-writer design
-lock-free queues
-CPU pinning
-batching
-binary protocols
-zero-copy parsing
-memory pools
-branch prediction
-NUMA awareness
-kernel bypass concepts
-```
-
-Important concept: hot path.
-
-Meaning:
-
-```text
-The small section of code where every nanosecond matters.
-```
-
-For this project:
-
-```text
-receive event
--> validate
--> match
--> emit trade/event
-```
-
-Avoid in hot path:
-
-```text
-AI calls
-database calls
-network calls
-string-heavy logging
-heap allocation
-locks
-unbounded queues
-dynamic dispatch unless justified
-```
-
-Exit criteria:
-
-```text
-benchmark baseline exists
-optimization improves measured numbers
-correctness tests still pass
-trade-offs are documented
-```
-
-Detailed HFT roadmap:
-
-```text
-docs/HFT_ROADMAP.md
-```
-
-## Phase 12: Postgres Control Plane And Authentication
-
-Branch:
-
-```text
-phase-12-postgres-persistence and focused phase-12 feature branches
-```
-
-Goal:
-
-```text
-persist completed runs and add product-level trading concepts
-```
-
-Scope:
-
-```text
-Postgres connection with sqlx
-users and accounts
-password credentials and initial administrator bootstrap
-public trader signup and login
-hashed, expiring, revocable sessions
-bearer authentication and role-aware authorization
-optional Redis session cache with PostgreSQL fallback
-instruments such as BTC-USDT, ETH-USD, AAPL-USD
-simulation runs
-orders and trades
-book snapshots
-run metrics
-reference/oracle prices
-recent-run queries for dashboards
-```
-
-Important rule:
-
-```text
-Postgres is outside the matching hot path.
-```
-
-Reference/oracle price rule:
-
-```text
-Oracle prices are used for risk checks, mark price, slippage analysis, and
-analytics. They do not override price-time matching.
-```
-
-Why it matters:
-
-```text
-This turns the project from only a matching engine into a backend trading
-system with durable history, user ownership, instruments, market pricing, and
-queryable analytics.
-```
-
-Detailed database roadmap:
-
-```text
-docs/POSTGRES_MARKET_DATA_ROADMAP.md
-```
-
-Completed in the current control-plane work:
-
-```text
-PostgreSQL development service and SQLx pool
-instrument, user, account, role, credential, and session migrations
-database-aware health endpoint
-initial administrator bootstrap
-public signup with a server-controlled trader role
-Argon2 password hashing outside Tokio async workers
-login with 256-bit bearer tokens and hashed session storage
-bearer-session middleware with current user and role lookup
-database-backed administrator authorization
-idempotent logout and session revocation
-unit and isolated PostgreSQL authentication integration tests
-authenticated account creation and owner-scoped listing
-administrator-managed instrument creation with atomic batch rollback
-instrument pause, resume, and delist with a guarded status transition
-authenticated instrument list and lookup for every user
-database CHECK constraints on instrument tick, lot, and scale rules
-typed UserRole in the session and admin middleware
-equal login timing for unknown emails and wrong passwords
-per-IP rate limiting on signup and login
-graceful shutdown and RUST_LOG-driven log levels
-```
-
-Remaining before Phase 13:
-
-```text
-expose validated instrument configuration as an in-memory snapshot the engine
-runtime can read without querying PostgreSQL
-```
-
-Deferred, with reasons:
-
-```text
-reference/oracle pricing    useful for risk checks and mark prices, which need
-                            orders first; build order places it after the
-                            engine runtime (POSTGRES_MARKET_DATA_ROADMAP.md)
-Redis session cache         measure session lookup first
-Redis rate limiting         only needed with more than one API process
-                            (RATE_LIMITING.md)
-```
-
-## Phase 13: Sequenced Single-Writer Runtime
-
-Status: paused after command/event types and a synchronous processor were
-developed on `phase-13-engine-commands`. They are not on `master`. Dedicated
-thread ownership, bounded queues, instrument routing, and timing remain.
-
-Goal:
-
-```text
-put a deterministic runtime boundary around the existing in-memory OrderBook
-```
-
-Work:
-
-```text
-define compact EngineCommand and EngineEvent types
-assign a monotonic sequence per matching shard
-give one dedicated thread exclusive ownership of each OrderBook shard
-route decoded commands through bounded preallocated queues
-define an explicit queue-full rejection policy
-measure queue wait and matching time independently
-```
-
-Why:
-
-```text
-one writer avoids locking the book and preserves deterministic command order
-bounded queues prevent overload from becoming unlimited memory growth
-```
-
-Exit criteria:
-
-```text
-no Arc<Mutex<OrderBook>> around the matching core
-same sequenced input produces the same trades and final snapshot
-queue capacity and overload behavior are tested
-p50, p95, p99, and p999 latency are recorded
-```
-
-## Phase 14: Durable Journal And Recovery
-
-Status: paused. The Phase 16 transport lab cannot promise durable orders.
-
-Goal:
-
-```text
-make acknowledged commands recoverable without querying Postgres during matching
-```
-
-Work:
-
-```text
-define a versioned append-only binary journal
-add shard_id, engine_sequence, event_id, and checksums
-document memory-only, local-durable, and replicated acknowledgement modes
-create periodic snapshots outside the matching decision
-restore from latest snapshot plus later journal entries
-test truncated/corrupted journal and crash-restart scenarios
-```
-
-Exit criteria:
-
-```text
-recovery reproduces the same book and next sequence
-acknowledgement happens only after the configured durability boundary
-canonical orders/trades cannot be silently dropped
-```
-
-## Phase 15: Kafka And Query Projections
-
-Status: paused. The binary codec does not need Kafka or database projections.
-
-Goal:
-
-```text
-fan durable engine events out to slow systems without blocking matching
-```
-
-Work:
-
-```text
-publish from the journal, never directly from matching
-partition Kafka events by authoritative engine shard
-resume publication from the last durable sequence
-build idempotent PostgreSQL consumers keyed by shard_id + engine_sequence
-commit Kafka offsets only after database transactions commit
-monitor consumer lag and failed records
-```
-
-Later analytical slice:
-
-```text
-aggregate 100 ms and 1 second market-state windows
-version feature definitions and normalization
-store spread/depth/imbalance/trade/cancel/volatility vectors in pgvector
-start with exact vector search; benchmark before adding HNSW
-```
-
-Exit criteria:
-
-```text
-duplicate delivery does not duplicate database effects
-consumers rebuild projections from the beginning
-Kafka/Postgres outages do not mutate matching behavior
-```
-
-## Phase 16: Binary Order Gateway
-
-Current independent slice: the versioned 56-byte request codec, validation,
-round-trip tests, and JSON-versus-binary parsing benchmarks described in
-[`BINARY_ORDER_PROTOCOL.md`](BINARY_ORDER_PROTOCOL.md). A later loopback TCP
-experiment may acknowledge successful decoding only. A full order gateway
-still depends on Phase 13's bounded runtime, ownership, and routing. The
-steps and prerequisites are in
-[`PHASE_16_17_LEARNING_PLAN.md`](PHASE_16_17_LEARNING_PLAN.md).
-
-Goal:
-
-```text
-separate network handling from matching and reduce parsing variability
-```
-
-Work:
-
-```text
-keep HTTP/JSON for admin APIs
-add persistent order-entry connections
-define and version a fixed-layout binary command protocol
-enable TCP_NODELAY where TCP is used
-timestamp receive, decode, queue, match, and response stages
-benchmark JSON versus binary decoding
-```
-
-Exit criteria:
-
-```text
-matching makes no socket calls
-malformed frames are rejected before entering the engine queue
-stage-level tail latency is reported
-```
-
-## Phase 17: Advanced Latency Engineering
-
-Current independent slice: baseline/profiling, allocation and latency
-distribution experiments on the existing in-memory engine. Test SIMD only on
-a measured batch-oriented workload. Kernel bypass/DPDK remains research until
-the TCP path is measured and hardware access is available. This slice does
-not claim to complete the full phase exit criteria.
-
-Start only after profiles show a measurable bottleneck:
-
-```text
-CPU affinity and isolated cores
-NUMA-aware engine and queue placement
-busy polling versus parked threads
-cache-line padding and false-sharing tests
-fixed-capacity pools and allocation-free command processing
-alternate bounded price ladder
-SIMD experiments for measured batch-oriented work
-huge pages
-kernel bypass/DPDK research
-warm standby or replicated deterministic state machine
-```
-
-Success means a documented improvement to tail latency without breaking
-correctness or recovery. Sub-microsecond matching benchmarks are not presented
-as sub-microsecond end-to-end network latency.
-
-## Phase Merge Checklist
-
-Before merging any phase branch:
-
-```text
-cargo test passes
-new behavior has tests
-README/docs updated if concepts changed
-no unrelated changes
-branch name matches phase
-commit message explains what changed
-you can explain every special algorithm/data structure used
-```
-
-Suggested commit message style:
-
-```text
-phase 01: add matching core
-phase 02: expand correctness tests
-phase 03: support cancel and modify orders
-phase 04: add event log and replay
-phase 05: add market simulator
-phase 06: add benchmark baseline
-phase 07: add AI run analysis
-phase 08: add LangGraph experiment workflow
-phase 09: add Windmill orchestration
-phase 10: pause AI foundation and document resume plan
-phase 11: add HFT-style systems improvements
-phase 12: add Postgres market data persistence
-```
-
-## Learning Rule For This Project
-
-Whenever we introduce something new, we must answer:
-
-```text
-What is it?
-Why did we choose it?
-What problem does it solve?
-What trade-off does it create?
-Is it in the hot path or outside the hot path?
-How would I explain it in an interview?
-```
-
-This is the main learning standard for the project.
+For an unfamiliar technique, write down the reason for using it, where it
+runs, its cost, and the test or measurement that would prove it helps.

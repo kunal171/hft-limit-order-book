@@ -1,10 +1,10 @@
 # Windmill Usage
 
-Windmill runs the Rust engine as an external job. The Windmill script changes
-into the mounted project directory, calls the wrapper, and returns only
-`summary.json` as the job result.
+Windmill starts a simulation through a shell wrapper. The wrapper writes run
+files to disk and returns `summary.json` as the job result. Windmill does not
+run inside the matching engine.
 
-## Wrapper scripts
+## Run Locally
 
 ```bash
 cargo build --release
@@ -27,7 +27,7 @@ directory, writes verbose output to `run.log`, and prints only `summary.json`
 to stdout. Each run folder contains `events.json`, `snapshot.json`,
 `summary.json`, and `run.log`. Everything under `runs/` is ignored by Git.
 
-## Windmill Bash script
+## Windmill Script
 
 ```bash
 scenario="$1"

@@ -1,14 +1,13 @@
-# Binary Order Protocol Lab (Version 1)
+# Binary Order Protocol, Version 1
 
-This document specifies the first wire format to implement in Phase 16. It is
-an offline codec and benchmark contract. No TCP order-entry service or live
-trading is implemented by this document.
+Phase 16 starts with an offline encoder, decoder, and benchmark for the format
+below. It does not provide TCP order entry or live trading.
 
-The format is deliberately small and fixed-size so we can learn byte parsing,
-validate untrusted input, and compare binary decoding with JSON. The field
-layout is a learning protocol, not a claim of exchange interoperability.
+The fixed size makes byte parsing and malformed-input tests straightforward.
+We can compare its decode cost with JSON. This format is not compatible with
+an exchange protocol.
 
-## Boundary And Assumptions
+## Scope
 
 ```text
 TCP bytes -> frame decoder -> validated command -> future gateway/sequencer
@@ -106,7 +105,7 @@ Do not use `unsafe`, `transmute`, or `repr(C)` for this codec. Explicit
 `from_be_bytes`/`to_be_bytes` makes the format independent of CPU endianness
 and Rust struct layout.
 
-## Learning And Verification Order
+## Build And Test Order
 
 1. Define constants for the 8-byte header and 56-byte frame, plus typed
    `MessageType`, `WireCommand`, and `DecodeError`.

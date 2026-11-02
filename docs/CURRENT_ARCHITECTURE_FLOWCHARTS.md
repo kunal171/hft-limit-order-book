@@ -1,16 +1,14 @@
 # Current Architecture Flowcharts
 
-These diagrams describe what the repository implements today. They are kept
-separate from the target HFT architecture so planned components are not
-mistaken for working runtime paths.
+These diagrams show the code that runs today. Planned runtime pieces are in
+[`ARCHITECTURE.md`](ARCHITECTURE.md), not in these current-state diagrams.
 
-Editable high-level design diagram:
+Editable Draw.io diagram:
 
 [`diagrams/current-system-hld.drawio`](diagrams/current-system-hld.drawio)
 
-Maintenance rule: update this document and the editable Draw.io file whenever
-a route, service, storage dependency, runtime boundary, or delivery status
-changes.
+Update both diagrams when a route, service, storage dependency, or runtime
+boundary changes.
 
 Status legend:
 

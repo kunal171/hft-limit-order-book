@@ -1,8 +1,8 @@
-# Phase 16 And 17: Guided Low-Latency Labs
+# Phase 16 And 17: Protocol And Latency Work
 
-We are temporarily doing independent protocol and performance work before
-finishing Phases 13-15. This is a learning order, not a claim that a live HFT
-gateway can be completed without its engine runtime and durability policy.
+We are working on the codec and measurements before finishing Phases 13-15.
+That does not make the gateway usable for live orders: it still needs the
+engine runtime and a clear durability policy.
 
 ## Paused Work And Branches
 
@@ -31,13 +31,11 @@ Phase 16A: fixed-layout request codec and validation
 -> complete the production-style Phase 16 gateway and Phase 17 evaluation
 ```
 
-## How We Will Learn Each Step
+## How To Work Through It
 
-For every implementation step, explain **why** the component exists, **what**
-each code snippet does, the Rust or systems concept involved, the expected
-behavior, and how to test it. Implement one small slice, review the user's
-code, then move on. Avoid introducing a library or unsafe optimization before
-the measured problem calls for it.
+For each step, note what it does, why it is needed, and how to test it.
+Finish one small change before starting another. Measure a bottleneck before
+adding a library or unsafe optimization to address it.
 
 ## Phase 16A: Codec (Independent, First)
 
@@ -53,7 +51,7 @@ validation rules. Do not use Rust struct layout as a wire format.
 | 4 | Round-trip and golden-byte tests | Detects accidental protocol drift | Known bytes decode and re-encode identically |
 | 5 | Binary vs JSON decode benchmarks | Quantifies the cost of representation | Inputs are equivalent and setup is outside timed loops |
 
-Concepts to be able to explain: TCP is a byte stream; network byte order;
+Know why these matter: TCP is a byte stream; network byte order;
 fixed offsets versus `repr(C)` padding; checked length before slicing;
 `u64::from_be_bytes`; rejecting unknown versions; canonical unused bytes;
 and the difference between a wire version and an engine event schema version.
@@ -81,7 +79,7 @@ event mode, and measurement method before and after each experiment.
    many independent fields or processing market-data arrays. Matching is
    branch-heavy and order-dependent; SIMD there needs evidence, not a slogan.
 
-Concepts to explain: cache locality, allocations, false sharing, branch
+Review cache locality, allocations, false sharing, branch
 prediction, benchmark setup costs, throughput versus tail latency, CPU
 frequency/noise, and why a result from one workload does not generalize to
 every book shape. A GPU is not part of the order-by-order matching hot path.
@@ -112,13 +110,12 @@ Do not compare an in-process matching nanosecond result to end-to-end network
 latency. Report receive, decode, queue (once Phase 13 exists), matching, and
 response stages separately.
 
-## What Remains For The Full Phase Exit Criteria
+## What The Labs Do Not Finish
 
 Phase 16's original gateway exit criteria require a real bounded engine queue
 and a response with meaningful execution/acknowledgement semantics. Phase
-17's production-style evaluation requires that path plus the Phase 14
-durability modes. The labs above are deliberately mergeable before those
-dependencies, but they do not satisfy the complete exits by themselves.
+17's full evaluation requires that path plus the Phase 14 durability modes.
+The labs can be merged earlier, but they do not complete either phase.
 
 At each lab merge: run formatting, Clippy, focused tests and relevant
 benchmarks; record machine/workload details; update the protocol or baseline

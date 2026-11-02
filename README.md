@@ -1,12 +1,10 @@
 # HFT-Style Limit Order Book
 
-A Rust limit order book and market-systems lab: deterministic price-time
-matching, replayable state, measured latency, and a PostgreSQL-backed trading
-control plane.
+A Rust project for price-time matching, event replay, and latency experiments.
+The HTTP control plane uses PostgreSQL; the live book stays in memory.
 
-This is a learning project, not production exchange infrastructure. The design
-goal is a single-writer matching engine that owns the live book in memory, with
-networking, databases, and analytics kept outside the matching hot path.
+This is not a live exchange. The planned runtime has one writer per book and
+keeps networking, database access, and analytics out of the matching loop.
 
 ## Status
 
@@ -20,9 +18,8 @@ networking, databases, and analytics kept outside the matching hot path.
 | Phase 16 binary protocol lab | Design documented; implementation next |
 | API connected to the engine (order entry) | Not started |
 
-The engine and the API are currently separate. We are learning binary protocol
-design and latency measurement before finishing their connection. This lab
-does not expose live order entry or durable execution. See
+The engine and API are still separate. The current work is a binary codec and
+latency measurement. There is no live order entry or durable execution yet. See
 [docs/PHASE_16_17_LEARNING_PLAN.md](docs/PHASE_16_17_LEARNING_PLAN.md).
 
 ## Layout
@@ -152,7 +149,7 @@ cargo bench         # Criterion: workloads, hot path, deep books, event modes
 cargo clippy --all-targets
 ```
 
-## More documentation
+## Further reading
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — current and target design
 - [docs/CURRENT_ARCHITECTURE_FLOWCHARTS.md](docs/CURRENT_ARCHITECTURE_FLOWCHARTS.md) — flow diagrams

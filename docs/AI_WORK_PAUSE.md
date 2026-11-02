@@ -1,25 +1,20 @@
-# AI Work Pause Note
+# AI Work: Paused
 
-This document records the AI integration work completed so far, why it is being
-paused, and where to resume later.
+AI analysis is on hold while the Rust engine and its runtime take priority.
+This note says what already works and where to pick up later.
 
 ## Status
 
-AI integration is paused for now.
-
-Current priority:
-
-```text
-make the Rust limit order book stronger as a systems/HFT-style project
-```
+Current priority: the order book's runtime, durability, protocol, and latency
+measurements.
 
 The AI layer should remain outside the matching hot path. It should analyze
 completed runs, not decide order matching or mutate live book state.
 
 ## What Exists Today
 
-The current AI work is a deterministic analysis foundation, not a full LLM
-integration.
+The analyzer produces a deterministic report from saved run data. It does not
+use an LLM.
 
 Files:
 
@@ -33,82 +28,24 @@ scripts/run_and_analyze.sh
 
 ### ai/analyze_run.py
 
-Purpose:
-
-```text
-read run artifacts -> produce analysis.md
-```
-
-Inputs:
-
-```text
-summary.json
-events.json
-snapshot.json
-```
-
-Output:
-
-```text
-analysis.md
-```
-
-Current behavior:
-
-```text
-validates that the run directory exists
-validates required run artifacts exist
-loads JSON artifacts
-counts event types
-formats book metrics
-formats trade metrics
-turns None/null values into "not available"
-generates deterministic interpretation bullets
-```
-
-Important functions:
-
-```text
-load_json(path)
-event_name(event)
-count_events(events)
-display_value(value)
-build_report(summary, events, snapshot)
-interpret(summary, events, snapshot)
-validate_run_dir(run_dir)
-main()
-```
+Reads `summary.json`, `events.json`, and `snapshot.json` from a run directory
+and writes `analysis.md`. It checks that the files exist, counts event types,
+formats book and trade metrics, and prints "not available" for missing values.
+The report follows fixed rules, so the same input produces the same text.
 
 ### scripts/analyze_run.sh
 
-Purpose:
-
-```text
-shell wrapper around ai/analyze_run.py
-```
-
-Usage:
+Runs the Python analyzer without requiring the caller to know its path:
 
 ```bash
 ./scripts/analyze_run.sh runs/<run-folder>
 ```
 
-Why it exists:
-
-```text
-Windmill and local scripts should call a simple shell entrypoint.
-The Python analyzer can change internally without changing orchestration calls.
-```
+Windmill and local scripts can both call this wrapper.
 
 ### scripts/run_and_analyze.sh
 
-Purpose:
-
-```text
-run Rust simulation -> write artifacts -> run analyzer -> print final JSON
-```
-
-Usage:
+Runs a simulation, analyzes its files, and prints the final JSON:
 
 ```bash
 ./scripts/run_and_analyze.sh synthetic-crossing 100 auto
@@ -171,7 +108,7 @@ Spread is not available because one or both sides are empty.
 VWAP summarizes the average executed price weighted by quantity.
 ```
 
-## What Is Intentionally Deferred
+## Not Built Yet
 
 Do not continue these yet:
 
@@ -185,9 +122,9 @@ Windmill flow that calls an LLM
 AI dashboard/report UI
 ```
 
-These can wait until the Rust system is more impressive and measurable.
+These depend on stable run artifacts and clearer questions for the analyzer.
 
-## Why Pause Here
+## Why It Is Paused
 
 The strongest next direction is HFT-style systems work:
 
@@ -202,10 +139,10 @@ order id index improvements
 replay correctness after optimization
 ```
 
-AI is useful later, but it should analyze a strong system. It should not become
-the center of the project before the engine itself has stronger systems depth.
+The current analyzer can stay paused while we measure and improve the Rust
+runtime. It does not need to be on the path that accepts an order.
 
-## Rules When Resuming AI
+## Before Resuming
 
 Keep these rules:
 
@@ -236,7 +173,7 @@ order arrives
 -> book state mutates from AI output
 ```
 
-## Resume Plan Later
+## Resume Steps
 
 When we come back to AI, resume in this order:
 

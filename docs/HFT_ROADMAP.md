@@ -1,8 +1,7 @@
 # HFT-Style Systems Roadmap
 
-This roadmap evolves the correct Rust limit order book into a measured,
-deterministic low-latency system. "HFT-style" means the project applies real
-trading-system principles; it does not claim production-exchange readiness.
+This plan takes the existing order book toward a measured low-latency system.
+"HFT-style" describes the design work, not production-exchange readiness.
 
 The canonical component design is in [`ARCHITECTURE.md`](ARCHITECTURE.md). The
 phase-level project plan is in [`ROADMAP.md`](ROADMAP.md).
@@ -13,7 +12,7 @@ binary codec lab and Phase 17 measurement lab come first. Read
 [`BINARY_ORDER_PROTOCOL.md`](BINARY_ORDER_PROTOCOL.md). The full single-writer,
 durability, and gateway goals below remain the target architecture.
 
-## Core Rule
+## Keep Matching In Memory
 
 ```text
 The matching thread owns its book and performs only bounded in-memory work.
@@ -208,7 +207,7 @@ each vector. Raw events remain authoritative and vectors remain recomputable.
 Start with exact pgvector search and introduce HNSW only after corpus-size,
 recall, memory, and query-latency benchmarks justify it.
 
-## Definition Of Done
+## What Counts As Progress
 
 The HFT runtime milestone is complete when:
 

@@ -1,11 +1,10 @@
 # Rate Limiting
 
-Signup and login each run an Argon2 hash (about 25 ms of CPU). Without a limit,
-one client can flood these routes to exhaust the server, or guess passwords as
-fast as the machine allows. This document records the current design, its
-known limits, and the decision about when to move it out of process.
+Signup and login run Argon2, which costs CPU time. A flood of requests can
+starve other work; repeated login attempts also make password guessing easier.
+The API limits these routes per client IP.
 
-## Current Design
+## How It Works
 
 Code: `src/api/rate_limit.rs`. State: `AppState::auth_rate_limiter`.
 
@@ -62,7 +61,7 @@ The restart gap is small: an attacker cannot trigger restarts, and one extra
 burst per restart is a few hundred guesses a day at most. The
 several-instances gap is the one that matters.
 
-## Decision: When To Move Out Of Process
+## When To Use A Shared Limiter
 
 Keep the in-memory limiter while the API runs as a single process.
 
@@ -102,7 +101,7 @@ later, which account it targets.
 When the API moves behind a proxy, change the client key to the forwarded
 client IP, and accept that header only from the trusted proxy's address.
 
-## Follow-Up List
+## Later Work
 
 ```text
 per-email limit on login, alongside the per-IP limit

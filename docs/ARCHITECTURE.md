@@ -1,8 +1,8 @@
 # HFT-Style Order Book Architecture
 
-This is the source of truth for the target runtime architecture. The project is
-an HFT-style learning system: it applies low-latency exchange design principles,
-but it is not yet production trading infrastructure.
+This describes the planned runtime. The current engine is smaller: it has no
+live order-entry gateway or durable execution. The design borrows low-latency
+exchange ideas but is not production trading infrastructure.
 
 For diagrams of only the components and flows implemented today, see
 [`CURRENT_ARCHITECTURE_FLOWCHARTS.md`](CURRENT_ARCHITECTURE_FLOWCHARTS.md).
@@ -199,7 +199,7 @@ Capture timestamps at gateway receive, decode completion, queue admission,
 matching start/end, and response send. Report p50, p95, p99, p999, and maximum
 for each stage instead of relying only on average latency.
 
-## Non-Negotiable Invariants
+## Invariants To Preserve
 
 ```text
 one authoritative sequence per engine shard

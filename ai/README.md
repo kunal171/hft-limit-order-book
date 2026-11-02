@@ -1,32 +1,19 @@
-# AI Analysis Module
+# Run Analysis (Paused)
 
-Status: paused.
-
-The AI foundation exists and is documented, but active work is paused while the
-project shifts toward HFT-style systems improvements.
-
-Resume notes:
-
-```text
-docs/AI_WORK_PAUSE.md
-```
-
-This folder contains the first AI-facing layer for the limit order book project.
-
-The Rust engine produces deterministic run artifacts. This module reads those
-artifacts and creates a human-readable analysis report.
+The Rust simulator writes run files. This Python script reads them and writes
+`analysis.md`. AI work is paused while the order-book runtime takes priority;
+see [the resume note](../docs/AI_WORK_PAUSE.md).
 
 ## Current Scope
 
-The current analyzer is intentionally simple and deterministic:
+The analyzer follows a fixed set of rules:
 
 ```text
 run artifacts -> Python analyzer -> analysis.md
 ```
 
-It does not call an LLM yet. That is deliberate. Before adding LangChain or
-LangGraph, we want a clean input/output contract that is easy to test and easy
-to plug into Windmill.
+It does not call an LLM. The fixed input and output make it easy to test and
+run from Windmill.
 
 ## Inputs
 
@@ -78,7 +65,7 @@ After it runs, open:
 cat runs/ai-test-20260902-120000/analysis.md
 ```
 
-## Why This Exists
+## Reason For This Module
 
 The matching engine should stay Rust-only, deterministic, and fast.
 
